@@ -1,0 +1,205 @@
+1. Kompilator
+
+Będziemy używać kompilatora SMLNJ (http://www.smlnj.org/) oraz MLton (http://mlton.org/).
+
+Kompilacja:
+	mlton hello.sml
+lub
+	mlton hello.mlb 
+
+Środowisko interaktywne (si):
+	sml
+(wychodzimy wpisując "CTRL+D" lub "OS.Process.exit(OS.Process.success);")
+warto używać rlwap:
+	rlwrap sml
+
+Wewnątrz środowiska interaktywnego możemy załadować moduł:
+
+	use "hello.sml";
+
+i jawnie wywołać jakąś funkcję:
+
+	inc 7;
+
+2. Podstawy
+
+Na początek funkcje na liczbach. Używamy si. 
+Si działa jak kalkulator. Infiksowe operatory to tylko "lukier syntaktyczny" np.
+	- 1-2;
+	- 1+2*3;	(* nawiasy niekonieczne - infiksowy zapis używa priorytetów *)
+	- 11 mod 5; 
+	- 11 div 5;
+	- 11 / 5;
+	- 11.0/5;
+	- 11.0/5.0;
+	- 1=0;
+	- floor (Math.sqrt 4.7);
+
+Często aplikujemy funkcje prefiksowo:
+	nazwaFunkcji arg1 arg2 ...
+np.
+	- (op -) (1,2);
+	- (op +) (1,(op * ) (2,3));
+	- (op mod) (11,5);
+
+Mamy też spojniki logiczne orelse, andalso, not oraz konstrukcję if-then-else które działają na wartościach "true" i "false" tak jak się należy spodziewać. 
+	- not true;
+	- false andalso true;
+	- false orelse true;
+Konstrukcja if-then-else działa tak jak się należy tego spodziwać i ma normalną składnię:
+	if warunek then Exp1 else Exp2
+Uwaga! if-then-else jest funkcją trójargumentową, nie ma czegoś takiego jak dwuargumentowe if-then (co miałaby zwracać jeśli warunek jest fałszywy?).
+	- if (not false) then 1 else (7 div 0);
+
+Konstrukcja "let-in" pozwala wprowadzać lokalne definicje:
+	
+	- val r= 7.0
+	- let val pi= 3.14 in 2.0* pi * r end;
+
+lokalnych definicji może byc więcej np:
+	- let val pi= 3.14; val n2= n*n; in pi * n2 end;
+
+
+Definiowanie funkcji. 
+
+Wszystkie funkcje (nierekurencjne) możemy definiować jako lamda termy:
+	'fn' występuje w roli lambdy a '=>' w roli '.'
+np.
+	fn n => (n+1)
+jest funkcją zwracającą liczbę większą o 1. Możemy zapplikować ją w si do jakiejś liczby:
+	- (fn n => (n+1)) 41
+
+Dla wygody programowania nadajemy termom nazwy, żeby nie musieć ich wielokrotnie przepisywać:
+	- val inc = (fn n =>  (n+1))
+
+Można też definiować funkcje w jakimś pliku i ładować go do si ( 'use "plik.sml";' ). 
+
+Można też nie używać notacji lambda, definiując funkcję następująco
+	fun inc n = n+1;
+definicja jest równoważna poprzedniej.
+
+Notacje można mieszać:
+	fun add x y = x+y
+to ta sama funkcja co
+	val add = fn x=> fn y => (x+y)
+oraz 
+	fun add x = fn y => (x+y)
+
+
+W pliku f1.hs jest zdefiniowana funkcja inc następująco:
+	inc n = n+1
+
+w si:
+	- use "f1.sml";
+	- inc 1;
+	- inc 1.2;
+	- inc 1 mod 2; 	(* dlaczego taki wynik? *)
+
+proszę potestować inne funkcje z pliku f1.hs.
+
+Funkcja 'rl' którą wywołjemy pisząc 'rl ();' jest skrótem dla przeładowania zawartości pliku "f1.sml".
+
+Definiowanie za pomocą rekursji:
+Do zdefiniowania funkcji używamy jej samej. Tak naprawde jest to użycie kombinatora punktu stałego.
+Łatwo jest zdefiniować term (funkcję) która nie ma postaci normalnej:
+	- fun om n= if (n mod 2)==0 then om (n+1) else om (n-1);
+Uwaga! nie można użyć termu omega z lambda rachunku ze względu na system typów (wrócimy do tego). 
+Ewaluację takiego programu można w si przerwać za pomocą ctrl-c.
+Powyższa definicja jest przykładem "rekursji ogonowej", czyli nie obciąża stosu. Można prościej:
+	- fun om n = om n;
+a nawet
+	- val om = om;
+Do ćwiczeń będziemy wykorzystywać  funkcję
+	- fun om n= om (n+1);
+Próba jej ewaluacji zakończy się jego przepełnieniem domyślnego typu dla int i otrzymamy 
+	uncaught exception Overflow [overflow]
+
+Aby zdefiniować coś sensownego powinniśmy dodać bazę rekursji. np.
+	- fun squareSum n= if (n<1) then 0 else (n*n + squareSum(n-1));
+
+Wyrażenie:
+	if warunek then Exp1 else Exp2
+jest tak naprawdę skrótem dla wyrażenia:
+	case warunek of 
+		True  => Exp1
+		|False => Exp2;
+
+Nietrudno sobie dopowiedzieć jak działa case w innych przypadkach. np.
+
+	fun fibb1 n= case n of	
+			  0 		=> 1
+			| 1		=> 1
+			| m	=> (fibb1 (m-1)) + (fibb1 (m-2));
+
+(można spojrzeć na powyższy case jak na 2 zagnieżdżone if-then-else)		
+
+W innych językach funkcyjnych moglibyśmy również użyć tzw. "guards" (przy okazji zdefiniujemy ujemne liczby fibonacciego) 
+	fibb2 n
+		|(n==0 || n==1)	= 1
+		| n < 0 	= (fibb2 (n+2)) - (fibb2 (n+1))
+		| n > 1		= (fibb2 (n-1)) + (fibb2 (n-2))
+		| otherwise 	= 1 	-- to można było sobie darować
+(nietrudno również tą konstrukcję przetłumaczyć na wiele aplikacji if-then-else)
+W sml nie możemy używać guards więc pozostają nam if'y lub: 
+fun fibb2 n = case (Int.compare (n,0)) of 
+		 GREATER => if (n=1) then 1 else (fibb2(n-1) + fibb2(n-2))
+		| EQUAL  => 1
+		| LESS	 => (fibb2 (n+2)) - (fibb2 (n+1));
+
+I jeszcze jedno uproszczenie składniowe:
+
+fun 	fibb3  0 = 1
+	|fibb3  1 = 1
+	|fibb3  n = (fibb3 (n-1)) + (fibb3 (n-2));
+
+Taka definicja jest tłumaczona na instrukcję case, więc wygląda dokładnie jak fibb1. Proszę zwrócić uwagę że kolejność wyrażeń jest istotna. np. funkcja:
+fun 	fibb4  n = (fibb4 (n-1)) + (fibb4 (n-2)) 
+	|fibb4  0 = 1
+	|fibb4  1 = 1;
+nie kończyłaby działania (kompilator generuje błąd). Nie jest to nic dziwnego jeśli się spojrzy na wynik tłumaczenia na case.
+
+Przeanalizuj plik f2.sml
+
+Funkcje na funkcjach.
+
+Argumentami funkcji mogą być równieć funkcje (ostatecznie wszystko to są lambda-termy). Również wartością funkcji może być funkcja.
+
+Możemy zdefiniowac funkcję:
+	- fun twice f x = f(f(x)) ;
+która składa funkcję f dwukrotnie na argumencie x. Proszę spróbować wykonać
+	- twice inc 40;
+równie dobrze bez uprzedniego definiowania "inc" możemy napisać:
+	- twice (fn n => n+1) 40;
+Proszę sprobować podać kilka innych funkcji jako parametry. 
+
+Jeśli jakiejś funkcji dwuargumentowej f x y podamy tylko pierwszy argument np. 42 to otrzymamy funkcję która dla argumentu y zwróci f 42 y. Zdefiniujmy funkcję add jako 
+	- fun add x y= x+y;
+Teraz zamiast pisać (fn n => n+1) możemy napisać 
+	(add 1 )
+Działa to oczywiście dla dowolonej liczby argumentów. Nazywamy to "częściową aplikacją".
+(Może ktoś pamięta np. z "Programowania" pojęcie "curryfikacja" (jeszcze do tego wrócimy.)) 
+
+Rozważmy term (funkcjonał):
+	- fun fsum f 1= f(1) | fsum f n= f(n)+ fsum f (n-1) ;
+i różne podstawienia funkcji f (=== nie występuje w SML, oznaczyłem tak "równoważność" termów)
+	fsum (fn n => 1) === \n -> n
+	fsum (fn n => n) === (\n -> suma liczb od 1 do n ) 
+	fsum (fn n => n*n) === (\n -> suma kwadratów liczb od 1 do n ) 
+	fsum (fn n => bToi (prim n)) === (\n -> liczba liczb pierwszych nie większych od n)
+
+Dla porządku definicja kombinatora S:
+
+	- fun cS a b c = (a c) (b c);
+
+i przykład 
+ 	- cS add (fn n => n+1) 2;
+(takie użycie nie ma za dużo sensu, ale na wykładzie jeszcze będzie dużo o S)
+
+Przeanalizuj plik f3.hs
+
+Każda standardowa aplikacja kombinatora punktu stałego generuje term bez postaci normalnej. To już widzieliśmy:
+
+fixp f x = f (fixp f) x
+foo f n= if n==0 then 0 else n+ (f (n-1))
+fixp foo 7
+
