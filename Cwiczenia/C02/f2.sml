@@ -46,6 +46,10 @@ fun 	fac 1 	= 1
 
 (* napisz predykat pierwszości (jak najbardziej naiwnie) *)
 
-fun isPrime n = (let fun ch i =(if (i<n) then (if ((n mod i)=0) then false else ch (i+1)) else true) in fun 2 end);
+fun isPrime n = (let fun ch i =(if (i<n) then (if ((n mod i)=0) then false else ch (i+1)) else true) in ch 2 end);
 
 (* napisz funkcję gcd obliczającą największy wspólny dzielnik *)
+
+fun gcd a 0 = a
+| gcd a b = gcd b (a mod b);
+
