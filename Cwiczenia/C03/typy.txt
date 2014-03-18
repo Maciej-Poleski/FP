@@ -1,0 +1,177 @@
+Typy w SML'u
+
+1. Proste typy
+
+Wyrażenie ":" interpretujemy jako predykat "jest typu" i stosujemy następująco
+	
+	term : formulaTypu
+lub
+	nazwaTermu : formulaTypu
+np. wyrazenie
+	(fn n => n):'a -> 'a
+mowi że term (fn n => n) jest typu 'a -> 'a.
+
+Dobrą praktyką jest deklarowanie typu dla argumentów i wartości funkcji. 
+np.
+
+fun inc (x:int) :int= x+1;
+
+Nie jest to jednak konieczne. W przypadku braku takiej deklaracji kompilator/interpreter sam przypisze najbadziej ogólny typ. 
+
+W si typ termu T jest wypisywany obok wartości, a czasem zamiast watości w przypadku funkcji:
+	- inc;
+	val it = fn : int -> int
+
+Znajdź przykłady termów dla których poniższe typy są najbardziej ogólne:
+	'a -> 'b -> 'a 			(const)
+	'a -> 'b -> 'b
+	('a->'b->'c) -> ('a->'b)-> 'a -> 'c
+	('b -> 'c) -> ('a -> 'b) -> 'a -> 'c  (o - prawie)
+	('a -> 'b -> 'c) -> 'b -> 'a -> 'c 	(flip)
+	('a -> 'b) -> 'a -> 'b		
+	(('p->'p) -> 'q )-> 'q
+(*)	'p-> 'p-> 'p
+(*)	(('p-> 'p)->'p) ->'p		
+(*)	((('o->'o)->'o)->'o)->'o->'o		(monster Type)
+
+Spróbuj znaleźć najbardziej ogólne typy dla poniższych termów (wyniki mozna sprawdzić za pomocą komendy ":t" w ghci)
+	numeral 0 	czyli		(\s z -> z)	
+	numeral 1	czyli 		(\s z -> s z)
+	numeral 2
+	numeral 3
+	cS cK cK		(cS - kombinator S, cK - kombinator K, patrz poprzednie cwiczenia)
+	cK cK cS
+	cK cS cS
+	term dodawania numerali
+	     mnożenia
+	     potęgowania
+
+
+
+
+2. Typy algebraiczne
+	
+przykład typu wyliczeniowego
+
+	datatype Color= Red |Green |Blue;
+
+Rozważmy typ list zawierających liczby:
+
+	datatype IntList = Nil | Cons of (int*IntList);
+	
+jeszcze lepiej typ list sparametryzować typem elementów listy 
+	datatype 'a List = Nil | Cons of ('a * ('a List));
+wtedy typ IntList jest równoważny typowi ('a List).
+
+Konstruktor już wskazaliśmy, możemy go uzyć:
+	
+	- Cons (41, Cons (42,Nil));
+
+Destruktory możemy zdefiniować za pomocą pattern-matching:
+
+	fun car (Cons (element,_)) = element;
+	
+	fun cdr (Cons (_,rest)) = rest;
+
+Przykładowa funkcja rekurencyjna na liście 
+	
+	fun 	len Nil = 0 
+		|len l = 1 + (len (cdr l));
+
+Napisz funkcję len uzywając pattern-matching zamiast destruktora cdr (i radzę już tak pisać zawsze (prawie)). 
+
+Napisz (jak najbardziej naiwnie) następujace funckje
+	addFirst list el === zwraca liste ktora zaczyna sie od el a potem jest list
+	addLast  list el === zwraca liste ktora zaczyna sie od list a potem jest el
+	cat list1 list2  === katenacja list 
+	rev list 	=== odwracanie listy 
+	lFilter predicate list === zwraca listę elementów listy list dla których predykat predicate zwraca wartość True	
+		lFilter : ('elType -> bool) -> 'elType List  -> 'elType List
+
+	przykład użycia:
+		-lFilter (fn n => n>2) (Cons (1, Cons (5,Cons (3,Cons (1,Nil)))));
+	wynik:	
+		val it = Cons (5,Cons (3,Nil)) : int List
+
+	lMap fun list 	=== zwraca listę wartości funkcji fun na elementach listy list 
+			(lMap f (Cons (a,Cons (b ,Cons (c Nil)))))
+				=== (Cons ((f a),Cons ((f b),Cons ((f c), Nil))))
+
+	lMap :: ('elType1 -> 'elType2) -> List 'elType1 -> List 'elType2
+
+	przyklad użycia:
+		-lMap (fn n => n+1) (Cons (1, Cons (5,Cons (3,Cons (1,Nil)))));
+	wynik:	
+		val it = (Cons (2, Cons (6,Cons (4,Cons (2,Nil))))) : int List
+
+Listy sa czesto używane, wiec są już zaimplementowane w SML'u. Typ list elementow typu 'a jest notowany jako "'a list".
+Wyrazenie	
+	Cons el rest	odpowiada wyrazeniu	el :: rest 
+	Nil 					nil (lub [] )
+	car					hd		
+	cdr					tl
+	len					length
+	cat					@  (operator infiksowy)
+itd. (patrz http://www.standardml.org/Basis/list.html#SIG:LIST.@:VAL )
+
+Zwróć uwagę na typy powyższych operacji na listach. Listę możemy skrótowo zapisać uzywając nawiasów "[" "]" oraz przecinka np. [1,2,3,4]
+
+Napisz własną implementację funkcji last zwracającą ostatni element listy (dla list wbudowanych). Funkcja powinna być typu 
+	'a List -> 'a
+
+Uwaga! 
+	String != [Char]
+zobacz na typy funkcji implode i explode.
+
+Analogicznie do list możemy zdefiniować typ dla par np.
+	datatype 'elType Pair = Pair of 'elType*'elType
+Uwaga! to nie jest definicja rekurencyjna!
+pierwsze wystapienie słowa "Pair" jest nazwa typu (parametryzowanego typem 'elType),  a drugie jest tzw. konstruktorem danych (data constructor). Moglibyśmy rownie dobrze napisać 
+	datatype 'elType Pair = Para of 'elType*'elType
+
+Łatwo napisać rzutowania (cwiczenie). 
+Jeszcze lepiej byłoby umożliwic aby elementy pary były rożnych typów np.
+
+	datatype ('elType1,'elType2)  Pair= Pair of 'elType1*'elType2;
+(teraz typ Pair jest parametryzowany dwoma typami 'elType1 'elType2)
+Rzutowania nie będą się rożnić (poza ew. typami).
+
+Typy dla par, trojek itd. też mają specjalną skladnię. Typowi 
+	('elType1,'elType2) 	odpowiada 'elType1*'elType2
+
+Są też rzutowania 
+	#1 	- pierwsza współrzędna
+	#2	- druga współrzędna
+ale lepiej używać wzorcow (pattern-matching).
+
+Przykład użycia par (otrzymujemy rekurencję ogonową przy użyciu tzw. techniki akumulatora):
+
+fun factorial n = let 
+		fun pfac (0, z) = (0,z)
+		   |pfac (x,z) = pfac (x-1, z*x)
+	in #2(pfac (n,1:IntInf.int)) end;
+
+Napisz wydajnie odwracanie listy (rekurencja ogonowa). 
+
+Przeanalizyj poniższą definicję funkcji factorial 
+
+fun funnyFactorial 0= 1
+   |funnyFactorial n= let
+		fun pfac (0 , acc) = (1, acc)
+		   |pfac (x, acc) = pfac (x-1, (fn k => x* (acc k) ));
+		val res= pfac (n, (fn (z:IntInf.int) => z) );
+	in (#2 res) (#1 res) end;
+
+zwróć uwagę na wykorzystanie techniki akumulatora oraz to że prawie użyliśmy kombinatora S.
+
+napisz własne termy curryfikacji
+	typ 	 	((a, b) -> c) -> a -> b -> c 
+i odwrotny  (decurryfikacja? )
+	typ		(a -> b -> c) -> (a, b) -> c  
+
+Funkcja 
+	zip : 'a List -> 'b List -> ('a*'b) List
+z dwóch list robi listę par. Używajac curryfikacji  oraz funkcji zip i innych, napisz term ktory z pary list zrobi liste sum poszczegolnych elementow np.
+	f ([1,2,34], [13,4,5])  === [14,6,39]
+postaraj sie w powyższych definicjach nie używać pattern-matchingu i destruktorow dla par.
+-------------------
