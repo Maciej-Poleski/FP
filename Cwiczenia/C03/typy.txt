@@ -25,12 +25,12 @@ W si typ termu T jest wypisywany obok wartości, a czasem zamiast watości w prz
 Znajdź przykłady termów dla których poniższe typy są najbardziej ogólne:
 	'a -> 'b -> 'a 			(const)
 	'a -> 'b -> 'b
-	('a->'b->'c) -> ('a->'b)-> 'a -> 'c
-	('b -> 'c) -> ('a -> 'b) -> 'a -> 'c  (o - prawie)
-	('a -> 'b -> 'c) -> 'b -> 'a -> 'c 	(flip)
-	('a -> 'b) -> 'a -> 'b		
+	('a->'b->'c) -> ( ('a->'b)-> ('a -> 'c) )
+	('b -> 'c) -> ( ('a -> 'b) -> ('a -> 'c) )  (o - prawie)
+	('a -> 'b -> 'c) -> ( 'b -> ( 'a -> 'c ) ) 	(flip)
+	('a -> 'b) -> ( 'a -> 'b )		
 	(('p->'p) -> 'q )-> 'q
-(*)	'p-> 'p-> 'p
+(*)	'p-> ( 'p-> 'p )
 (*)	(('p-> 'p)->'p) ->'p		
 (*)	((('o->'o)->'o)->'o)->'o->'o		(monster Type)
 
