@@ -165,7 +165,7 @@ fun funnyFactorial 0= 1
 zwróć uwagę na wykorzystanie techniki akumulatora oraz to że prawie użyliśmy kombinatora S.
 
 napisz własne termy curryfikacji
-	typ 	 	((a, b) -> c) -> a -> b -> c 
+	typ 	 	((a, b) -> c) -> ( a -> ( b -> c ) ) 
 i odwrotny  (decurryfikacja? )
 	typ		(a -> b -> c) -> (a, b) -> c  
 

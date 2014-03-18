@@ -69,5 +69,3 @@ fun mult a b = a (add b) (gen 0);
 fun pow a b = b (mult a) (gen 1);
 
 fun even n = n not true;
-
-fun dec n =;
