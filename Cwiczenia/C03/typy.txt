@@ -25,16 +25,16 @@ W si typ termu T jest wypisywany obok wartości, a czasem zamiast watości w prz
 Znajdź przykłady termów dla których poniższe typy są najbardziej ogólne:
 	'a -> 'b -> 'a 			(const)
 	'a -> 'b -> 'b
-	('a->'b->'c) -> ( ('a->'b)-> ('a -> 'c) )
-	('b -> 'c) -> ( ('a -> 'b) -> ('a -> 'c) )  (o - prawie)
-	('a -> 'b -> 'c) -> ( 'b -> ( 'a -> 'c ) ) 	(flip)
-	('a -> 'b) -> ( 'a -> 'b )		
+	('a->'b->'c) -> ('a->'b)-> 'a -> 'c
+	('b -> 'c) -> ('a -> 'b) -> 'a -> 'c  (o - prawie)
+	('a -> 'b -> 'c) -> 'b -> 'a -> 'c 	(flip)
+	('a -> 'b) -> 'a -> 'b		
 	(('p->'p) -> 'q )-> 'q
-(*)	'p-> ( 'p-> 'p )
+(*)	'p-> 'p-> 'p
 (*)	(('p-> 'p)->'p) ->'p		
 (*)	((('o->'o)->'o)->'o)->'o->'o		(monster Type)
 
-Spróbuj znaleźć najbardziej ogólne typy dla poniższych termów (wyniki mozna sprawdzić za pomocą komendy ":t" w ghci)
+Spróbuj znaleźć najbardziej ogólne typy dla poniższych termów (wyniki mozna sprawdzić za pomocą si)
 	numeral 0 	czyli		(\s z -> z)	
 	numeral 1	czyli 		(\s z -> s z)
 	numeral 2
@@ -97,7 +97,7 @@ Napisz (jak najbardziej naiwnie) następujace funckje
 			(lMap f (Cons (a,Cons (b ,Cons (c Nil)))))
 				=== (Cons ((f a),Cons ((f b),Cons ((f c), Nil))))
 
-	lMap :: ('elType1 -> 'elType2) -> List 'elType1 -> List 'elType2
+	lMap : ('elType1 -> 'elType2) -> List 'elType1 -> List 'elType2
 
 	przyklad użycia:
 		-lMap (fn n => n+1) (Cons (1, Cons (5,Cons (3,Cons (1,Nil)))));
@@ -112,7 +112,7 @@ Wyrazenie
 	cdr					tl
 	len					length
 	cat					@  (operator infiksowy)
-itd. (patrz http://www.standardml.org/Basis/list.html#SIG:LIST.@:VAL )
+itd. (patrz http://www.standardml.org/Basis/list.html#top )
 
 Zwróć uwagę na typy powyższych operacji na listach. Listę możemy skrótowo zapisać uzywając nawiasów "[" "]" oraz przecinka np. [1,2,3,4]
 
@@ -165,12 +165,12 @@ fun funnyFactorial 0= 1
 zwróć uwagę na wykorzystanie techniki akumulatora oraz to że prawie użyliśmy kombinatora S.
 
 napisz własne termy curryfikacji
-	typ 	 	((a, b) -> c) -> ( a -> ( b -> c ) ) 
+	typ 	 	((a, b) -> c) -> a -> b -> c 
 i odwrotny  (decurryfikacja? )
 	typ		(a -> b -> c) -> (a, b) -> c  
 
 Funkcja 
-	zip : 'a List -> 'b List -> ('a*'b) List
+	ListPair.zip : 'a List -> 'b List -> ('a*'b) List
 z dwóch list robi listę par. Używajac curryfikacji  oraz funkcji zip i innych, napisz term ktory z pary list zrobi liste sum poszczegolnych elementow np.
 	f ([1,2,34], [13,4,5])  === [14,6,39]
 postaraj sie w powyższych definicjach nie używać pattern-matchingu i destruktorow dla par.
