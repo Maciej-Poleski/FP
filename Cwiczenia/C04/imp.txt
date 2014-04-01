@@ -1,4 +1,4 @@
-Elemnty imperatywne SML'a
+Elementy imperatywne SML'a
 
 1. Referencje.
 Referencje tworzymy za pomocą słowa kluczowego 'ref': 

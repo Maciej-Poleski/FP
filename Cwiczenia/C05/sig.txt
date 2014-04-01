@@ -1,0 +1,248 @@
+1. Sygnatury. Sygnatura jest opisem interfejsu modułu. Przykład sygnatury dla kolejki:
+
+signature QUEUE= sig 
+	type 'a queue
+
+	exception Empty
+	val empty: 'a queue
+	val enqueue:'a * 'a queue -> 'a queue
+	val dequeue:'a queue -> 'a * 'a queue
+end;
+
+Sygnatury można rozszerzać:
+
+signature QUEUE_WITH_EMPTY=sig
+	include QUEUE
+
+	val isEmpty: 'a queue -> bool
+
+end;
+
+Tak rozszerzona sygnatura nie różni się od poniższej:
+
+signature QUEUE_WITH_EMPTY=sig
+	type 'a queue
+
+	exception Empty
+	val empty: 'a queue
+	val enqueue:'a * 'a queue -> 'a queue
+	val dequeue:'a queue -> 'a * 'a queue
+
+	val isEmpty: 'a queue -> bool
+
+end;
+
+Sygnatury można doprecyzowywać:
+	
+signature QUEUE_AS_LIST= QUEUE where type 'a queue= 'a list 
+
+Sygnatury QUEUE_WITH_EMPTY oraz QUEUE_AS_LIST pasują/spełniają (eng. match) sygnaturę QUEUE.
+
+2. Struktury. Struktura jest modułem zawierającym implementację. 
+
+structure Queue = struct
+	type 'a queue = 'a list;
+	exception Empty;
+
+	val empty = [];
+	fun enqueue (el,xs) = el::xs;
+	fun dequeue [] = raise Empty|
+		dequeue [y] = (y,[]) |
+		dequeue (y::ys) = let
+				val (res,ys')= dequeue ys;
+			in (res,y::ys') end;	
+	fun isEmpty []= true|
+	 	isEmpty _ = false;
+
+	fun enqueueList (xs,[]) = xs |
+		enqueueList (xs,y::ys)= y::(enqueueList (xs,ys));
+end;
+
+Przykłady użycia:
+- val q= Queue.empty;
+val q = [] : 'a list
+- val q= Queue.enqueueList ([2,3,4],q);
+val q = [2,3,4] : int list
+- Queue.dequeue q;
+val it = (4,[2,3]) : int * int list
+
+Nazwy struktur można przemianowywać:
+
+-structure Q=Queue;
+...
+-Q.empty;
+val it = [] : 'a list
+
+oraz dołączać do bieżącej przestrzeni nazw:
+
+-open Queue;
+...
+- enqueue (19,empty);
+val it = [19] : int list
+
+3. Przypisanie sygnatury (ascription). Strukturze możemy przypisać sygnaturę, którą ta struktura implementuje. W ten sposób zawężamy interfejs struktury. Są dwa sposoby przypisania ":" (transparent, or descriptive ascription) oraz ":>" (opaque, or restrictive ascription). Oba sposoby ukrywają funkcje, które nie są specyfikowane w interfejsie.
+
+structure Q1:QUEUE = Queue;
+structure Q2:>QUEUE = Queue;
+
+- Q1.enqueue ("a",Q1.empty);
+val it = ["a"] : string Queue.queue
+
+- Q1.enqueueList;
+... Error ...
+
+Dodatkowo przypisanie ":>" ukrywa/abstrahuje typy używane w implementacji:
+- Q1.enqueue ("a",Q1.empty);
+val it = ["a"] : string Queue.queue
+- Q2.enqueue ("a",Q1.empty);
+val it = - : string Q2.queue
+- Q1.enqueue (7,[2,3,4]);
+val it = [7,2,3,4] : int Queue.queue
+- Q2.enqueue (7,[2,3,4]);
+... Error ... [tycon mismatch] ...
+
+Porównaj poniższą sygnturę z QUEUE. Która specyfikacja jest lepsza? Zaimplementuj kolejkę liczb 'int' w sygnaturze QUEUE2.
+
+signature QUEUE2= sig
+	type elT
+	type queue
+
+	exception Empty
+	val empty: queue
+	val enqueue:elT * queue ->  queue
+	val dequeue:queue -> elT * queue
+end;
+
+4. Funktory. Strukturę możemy sparametryzować.
+
+Najpierw zdefiniujemy strukturę dla wartości uporządkowanych.
+
+signature COMPARABLE= sig
+	type t;
+	val cmp: t*t -> order	
+end;
+
+Teraz możemy zaimplementować zbiór za pomocą posortowanej listy.
+
+functor OSet(structure Val : COMPARABLE)= struct
+	structure Val=Val;
+	type oset = Val.t list;
+
+	val empty=[];
+	fun insert (x,[]) = [x]|
+		insert (x,y::ys)= (case (Val.cmp (x,y)) of
+			LESS	=>	x::(y::ys) |
+			EQUAL	=>  y::ys |
+			GREATER => y::(insert (x,ys)) 
+			);
+
+	fun member (x,[]) = false|
+		member (x,y::ys)= (case (Val.cmp (x,y)) of
+			LESS	=>	false |
+			EQUAL	=>  true |
+			GREATER => member (x,ys)
+			);
+end;
+
+Definiujemy komparator dla typu int.
+
+structure CInt: COMPARABLE= struct
+	type t= int;
+	val cmp= Int.compare;
+end;
+
+I karmimy funktor komparatorem.
+
+structure OS=OSet(structure Val=CInt);
+
+-OS.insert (19,OS.insert (7,OS.empty));
+val it = [7,19] : CInt.t list
+
+
+5. Współdzielenie struktur.
+
+Dwie sygnatury dla obiektów geometrycznych. Obie korzystają z typu Point.
+
+signature VECTOR= sig
+	type Point;
+	type t;
+
+	val from:t -> Point;
+	val to	:t -> Point;
+end;
+
+signature BALL= sig
+	type Point;
+	type t;
+
+	val center:t -> Point;
+	val radius:t -> Math.real;
+end;
+
+Funktor, który wymaga aby typy Point w strukturach się zgadzały.
+
+functor Geom(
+	structure Vector:VECTOR
+	structure Ball:BALL
+	sharing type Vector.Point=Ball.Point)= struct
+	
+	structure Ball=Ball;
+	structure Vector=Vector;
+
+	type Geom = Ball.t list * Vector.t list;
+end;
+
+
+Przykłady:
+
+structure Vector1D:VECTOR= struct
+	type Point= Math.real;
+	type t= Point * Point;
+
+	fun from (f,t)=f;
+	fun to (f,t)=t;	
+end;
+
+structure Vector2D:VECTOR= struct
+	type Point= Math.real * Math.real;
+	type t= Point * Point;
+
+	fun from (f,t)=f;
+	fun to (f,t)=t;	
+end;
+
+structure Ball1D:BALL= struct
+	type Point= Math.real;
+	type t= Point* Math.real;
+
+	fun center (c,r) =c;
+	fun radius (c,r) =r;
+end;
+
+
+- structure G1=Geom(structure Vector=Vector1D structure Ball=Ball1D);
+- structure G2=Geom(structure Vector=Vector2D structure Ball=Ball1D);
+
+6. Zadania. Zaimplementuj funktory które generują słowniki zgodne z poniższymi sygnaturami.
+Sprawdź czy działają i czy typ "dict" jest ujawniony.
+
+
+signature DICT= sig
+	structure Key:COMPARABLE;
+
+	type 'vt dict;
+
+	val empty: 'vt dict;
+	val insert: (Key.t * 'vt) * 'vt dict -> 'vt dict
+	val lookup: (Key.t * 'vt dict) -> 'vt option		
+end;
+
+signature DICTV= sig
+	structure Key:COMPARABLE;
+	type vT;	
+	type  dict;
+
+	val empty: dict;
+	val insert: (Key.t * vT) *  dict -> dict
+	val lookup: (Key.t * dict) -> vT option		
+end;
