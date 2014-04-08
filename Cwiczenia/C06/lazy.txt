@@ -1,0 +1,206 @@
+1. Spamiętywanie (memoization).
+
+Przypomnijmy bardzo niewydajną implementację funkcji obliczającej liczby Fibonacciego:
+
+fun fibb1 (n:IntInf.int) = if (n<2) then 1 else fibb1 (n-1) + (fibb1 (n-2));
+
+Obliczeni3 n-tej liczby wymaga wykładniczego czasu ze względu na wiele niezależnych rekurencyjnych wywołań. 
+Sposobem na to aby nie powtarzać rekurencyjnych obliczeń jest spamiętywanie.
+
+local
+	val cache = Array.array(2000,NONE)
+	fun lookup n = if n<2 then (SOME (1:IntInf.int)) else Array.sub (cache,n)
+	fun store n f= (Array.update (cache, n,SOME f); f)
+in 
+	fun fibb n = (case lookup n of 
+			SOME x => x|
+			NONE   => store n (fibb (n-1) + (fibb (n-2)))
+		)
+end
+
+Ćwiczenie: Zaimplementuj w analogiczny sposób funkcję która oblicza liczbę planarnych/płaskich drzew unarno-binarnych o zadanej liczbie wierzchołków.
+Liczby te spełniają równanie rekurencyjne.
+
+M(n+1) = M(n) + Sum[M(j)M(n-j),j=1,...,n-1]
+
+2. Uleniwianie.
+
+Przypomnijmy naturalną definicję funckji obliczającej silnie. 
+fun fact 0= 1|
+	fact n = n* (fact  \> n-1);
+
+
+Aby wyeliminować rekursję z powyższej definicji wprowadzaliśmy pomocniczą funkcję:
+fun pfact f 0  = 1|
+	pfact f n  = n * (f (n-1));
+
+i aplikowaliśmy do niej operator punktu stałego Y. (Y pfact) powinno obliczać silnie. 
+
+Operator punktu stałego możemy zdefiniować następująco:
+fun Y f = f (Y f);
+(zwróć uwagę na typ funkcji Y, czy taka formuła może być prawdziwa w logice minimalnej?)
+
+Aplikacja (Y f) do dowolnej wartości nie konczy działania.
+Dzieje się tak dlatego że gorliwy ewaluator będzie kolejno ewaluował zagnieżdżone (Y f).
+
+Przyjrzyjmy się bliżej ewaluacji:
+- val x= print "x\n";
+x
+val x = () : unit
+- x;
+val it = () : unit
+- x;
+val it = () : unit
+- fun px () = print "px\n";
+val px = fn : unit -> unit
+- px;
+val it = fn : unit -> unit
+- px ();
+px
+val it = () : unit
+- px ();
+px
+val it = () : unit
+
+Ewaluator SML'a ewaluuje ciało funkcji dopiero jak dostarczymy tej funckji wszystkie argumenty.
+
+Dzięki temu możemy definiować obliczenia które nie są od razu wykonywane.
+
+- fun oblicz n m () = (print "obliczam\n";n+m);
+val oblicz = fn : int -> int -> unit -> int
+- fun s () = oblicz 7 9 ();
+val s = fn : unit -> int
+- s;
+val it = fn : unit -> int
+- s ();
+obliczam
+val it = 16 : int
+- s ();
+obliczam
+val it = 16 : int
+
+Zdefiniujmy sygnaturę dla uleniwiania. Argumentem dla 'delay' jest obliczenie któremu brakuje ostaniego argumentu ().
+
+signature SUSP =sig
+	type 'a susp
+	val force : 'a susp -> 'a
+	val delay : (unit -> 'a) -> 'a susp
+end
+
+Najbardziej naturalna implementacja powyższej sygnatury.
+
+structure Susp:>SUSP= struct
+	type 'a susp = unit -> 'a ;
+	fun force f = f ();
+	fun delay f = f;
+end
+
+Spróbujmy jeszcze raz z silnią. Tym  razem zakładamy że rekurencyjne obliczenie podane funkcji pomocniczej jest uleniwione:
+
+fun pfact2 sf 0 = 1|
+	pfact2 sf n = n* (Susp.force sf (n-1));
+
+Definiujemy teraz uleniwiający operator punktu stałego:
+
+fun YS f = f (Susp.delay (fn () => YS f));
+
+Teraz funkcja (YS pfact2) działa jak należy.
+
+Do uleniwiania możemy użyć dowolnego argumentu, niekoniecznie sztucznego ().
+Jeśli zdefinujemy operator punktu stałego następująco 
+
+fun YA f a = f (YA f) a;
+
+to argumentem uleniwiającym będzie drugi argument funkcji f (czyli pierwszy argument funkcji wyjściowej).
+
+- YA pfact 4;
+val it = 24 : int
+
+Ćwiczenie: Zaimplementuj liniowe odwracanie list za pomocą operatora YS.
+
+3. Strumienie (bez spamiętywania).
+
+Strumienie to potencjalnie nieskończone ciągi obiektów ustalonego typu (listy). 
+Możemy je reprezentować następująco:
+
+datatype 'a stream = Stream of ('a * 'a stream) Susp.susp
+
+Ponieważ strumienie są nieskończone konieczne jest uleniwienie w definicji.
+
+Ze strumieniamy pracujemy tak jak z listami:
+
+fun seval (Stream sc) = Susp.force sc; 
+
+fun shd s = #1 \> seval s;
+fun stl s=  #2 \> seval s;
+
+fun scons x str = Stream \> Susp.delay (fn () => (x, str) ); (* tutaj uleniwienie nie gra żadnej roli *)
+
+Ćwiczenie: Zdefinuj poniższe funkcje na strumieniach:
+(* Strumień stały (x, x, x, ...) *)
+val sconst = fn : 'a -> 'a stream
+(* N-ty element strumienia, numerowanie od 0 *)
+val snth = fn : int -> 'a stream -> 'a
+(* Lista pierwszych N elementów strumienia *)
+val stake = fn : int -> 'a stream -> 'a list
+
+(* 'smap f s' to strumień zmapowany przez f:
+    [f s_0, f s_1, f s_2, ...] *)
+val smap = fn : ('a -> 'b) -> 'a stream -> 'b stream
+(* 'smap1 f s' to strumień ze zmapowanym pierwszym elementem:
+    [f s_0, s_1, s_2, ...] *)
+val smap1 = fn : ('a -> 'a) -> 'a stream -> 'a stream
+
+(* 'snat s z' to strumień [z, s z, s (s z), s (s (s z)), ...] *)
+val snat = fn : ('a -> 'a) -> 'a -> 'a stream
+
+(* 'stab f' to strumień [f 0, f 1, f 2, ...] *)
+val stab = fn : (int -> 'a) -> 'a stream
+
+(* 'szip s t' to strumień [(s_0, t_0), (s_1, t_1), ...] *)
+val szip = fn : 'a stream -> 'b stream -> ('a * 'b) stream
+(* 'szipwith f s t' to strumień [f (s_0, t_0), f (s_1, t_1), ...] *)
+val szipwith = fn : ('a * 'b -> 'c) -> 'a stream -> 'b stream -> 'c stream
+
+(* 'sfoldl f start s' to strumień:
+  [start, f(start, s_0), f(f(start, s_0), s_1), f(f(f(start, s_0), s_1), s_2), ...] *)
+val sfoldl = fn : ('a * 'b -> 'a) -> 'a -> 'b stream -> 'a stream
+(* 'srev s' to strumień:
+  [[s_0], [s_1, s_0], [s_2, s_1, s_0], ...] *)
+val srev = fn : 'a stream -> 'a list stream
+
+(* 'sfilter p s' to strumień s po usunięciu elementów,
+   dla których predykat p jest fałszywy. Jeśli w strumieniu
+   s jest skończenie wiele (n) elementów spełniających p,
+   to próba odczytania n+1-szego elementu może prowadzić
+   do zapętlenia. Proszę pamiętać, że sfilter ma być
+   leniwy - tzn. samo wywołanie sfilter nie może skanować
+   wejściowego strumienia w poszukiwaniu głowy spełniającej
+   predykat. To ma nastąpić dopiero w trakcie czytania zwróconego
+   strumienia. *)
+val sfilter = fn : ('a -> bool) -> 'a stream -> 'a stream
+(* 'stakewhile p s' to lista początkowych elementów strumienia,
+   dla których p jest prawdziwy. Jeśli p jest prawdziwy
+   dla nieskończenie wielu elementów, to funkcja może nie skończyć
+   działania *)
+val stakewhile = fn : ('a -> bool) -> 'a stream -> 'a list
+
+(* srepeat tworzy strumień elementów powtarzających się cyklicznie.
+   Zakładamy, że podana lista jest niepusta. *)
+val srepeat = fn : 'a list -> 'a stream
+(* spairs s to strumień:
+   [(s_0, s_1), (s_2, s_3), (s_4, s_5), ...] *)
+val spairs = fn : 'a stream -> ('a * 'a) stream
+
+(* dzieli strumień s na n strumieni:
+   [[s_0, s_n, s_{2n}, s_{3n} ...]
+    [s_1, s_{n+1}, s_{2n+1}, ...]
+    ...
+    [s_(n-1), s_{2n-1}, s_{3n-1}, ...]] *)
+val ssplitn = fn : int -> 'a stream -> 'a stream list
+
+(* Operacja odwrotna do ssplitn. Przeplata dane strumienie tworząc
+   wspólny strumień *)
+val sinterleave = fn : 'a stream list -> 'a stream
+
+4. Strumienie (ze spamiętywaniem) - patrz zadanie G na Satori.
