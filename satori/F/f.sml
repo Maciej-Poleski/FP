@@ -77,7 +77,7 @@ local
                                             |                          Double (n, l, r) => Single (Three (l, n, r, y, right)))
                                 |  EQUAL => Single(Two(left, x, right))
                                 |  GREATER => (case impl cmp (x, right) of Single (n) => Single (Two (left, y, n))
-                                                |                           Double (n, l, r) => Single (Three (left, y, l, n, r))))
+                                               |                           Double (n, l, r) => Single (Three (left, y, l, n, r))))
     |   impl cmp (x, (Three (left, y, center, z, right))) =
             (case (cmp (x,y)) of LESS => (case impl cmp (x, left) of Single (n) => Single (Three (n, y, center, z, right))
                                             |                          Double (n, l, r) => Double (y, Two (l, n, r), Two (center, z, right)))
@@ -86,7 +86,7 @@ local
                                                                             |                            Double (n, l, r) => Double (n, Two (left, y, l), Two (r, z, right)))
                                                                 |  EQUAL => Single(Three(left, y, center, x, right))
                                                                 |  GREATER => (case impl cmp (x, right) of Single (n) => Single (Three (left, y, center, z, n))
-                                                                                |                           Double (n, l, r) => Double (z, Two (left, y, center), Two (l, n, r)))));
+                                                                               |                           Double (n, l, r) => Double (z, Two (left, y, center), Two (l, n, r)))));
 in
     functor DSpec (structure KeyS:COMPARABLE):SPEC = struct
             structure Key:COMPARABLE = KeyS;
