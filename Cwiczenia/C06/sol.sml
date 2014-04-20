@@ -22,3 +22,21 @@ structure Susp:>SUSP= struct
         fun delay f = f;
 end
 
+fun YS f = f (Susp.delay (fn () => YS f));
+
+local
+    fun impl sf r [] = r
+    |   impl sf r [a] = Susp.force sf (a::r) []
+    |   impl sf r (a::at) = Susp.force sf (a::r) at;
+in
+    fun rev1 l = (YS impl) [] l;
+end;
+
+datatype 'a stream = Stream of ('a * 'a stream) Susp.susp;
+
+fun seval (Stream sc) = Susp.force sc; 
+
+fun shd s = #1 (seval s);
+fun stl s=  #2 (seval s);
+
+fun scons x str = Stream (Susp.delay (fn () => (x, str) ));
