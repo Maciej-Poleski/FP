@@ -37,15 +37,37 @@ fun srepeat l = smemo (fn ss => let
 
 fun spairs s = smemo (fn _ => ((shd(s),shd(stl(s))), spairs (stl(stl(s))) ));
 
+(*local
+    fun skip s n = if n>0 then skip (stl s) (n-1) else s;
+    fun make_stream_stream i s n = smemo (fn ss => let val stream = skip s i in (stream,make_stream_stream n stream n) end);
+    fun make_grid s i n = if i < n then let
+        val current_stream_stream = smap (fn x => stl(x)) s;
+    in (smap (fn x => shd(x)) current_stream_stream) :: (make_grid current_stream_stream (i+1) n) end else [] ;
+in
+    fun ssplitn n s = let
+        val stream_stream = make_stream_stream 0 s n;
+    in (smap (fn x => shd(x)) stream_stream)::(make_grid stream_stream 1 n) end;
+end; *)
+
 local
     fun get_nth i s = if i>0 then get_nth (i-1) (stl s) else s;
-    fun make_head i n s = smemo (fn _ => (let
-        val current = get_nth i s;
-        in (shd(current), make_head n n current) end));
-    fun make_tail i n s = if i<n then (make_head i n s)::(make_tail (i+1) n s) else [];
+    fun make_head c n = smemo (fn _ => (let
+        val current = c ();
+        in (current, make_head (fn () => get_nth n current) n) end));
+    fun make_tail_tail i n sl = if i<n then let
+        val current = sl ();
+        val current_stream = let fun make c = smemo (fn _ => (shd(shd(c)),make (stl c))); in make current end;
+        val next_lazy = (fn () => let fun make s = smemo (fn _ => (stl(shd(s)),make (stl s))); in make current end);
+    in current_stream::(make_tail_tail (i+1) n next_lazy) end else [];
+    fun make_tail i n sl = let val ss = (make_head sl n) in make_tail_tail i n (fn () => ss) end;
 in
-    fun ssplitn n s = make_tail 0 n s;
+    fun ssplitn n s = make_tail 0 n (fn () => s);
 end;
 
-fun sinterleave [a] = a
-|   sinterleave (a::b) = smemo (fn _ => (shd a, sinterleave (b @ [(stl a)])));
+local
+    fun impl [] sb = smap (fn x => stl(x)) sb
+    |   impl (a::b) sb = smemo (fn _ => (a, impl b sb));
+in
+    fun sinterleave [a] = a
+    |   sinterleave (a::b) = smap (fn x => shd(x)) (smemo (fn sb => (a, impl b sb)));
+end;
