@@ -26,8 +26,3 @@ and lunify NONE = NONE
                 in case restunified
                     of NONE => NONE
                     |  SOME(r) => SOME(v@r) end end;
-                    
-                    
-                    val t1=Fun([#"f"],[Var([#"x"]),Var([#"z"])]);
-val t2=Fun([#"f"],[Fun([#"g"],[Var([#"y"]),Var([#"z"])]),Fun([#"h"],[Var([#"x"])])]);
-(*  *)
