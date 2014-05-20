@@ -21,6 +21,8 @@ signature DICT= sig
     val empty: 'vt dict;
     val insert: (Key.t * 'vt) * 'vt dict -> 'vt dict;
     val lookup: (Key.t * 'vt dict) -> 'vt option;
+    
+    val transform: (Key.t * 'vt -> Key.t * 'vt) -> 'vt dict -> 'vt dict;
 end;
 datatype 'a node = Two of 'a node * 'a * 'a node |
                 Three of 'a node * 'a * 'a node * 'a * 'a node |
@@ -131,6 +133,11 @@ functor TDict(structure KeyS:COMPARABLE):>DICT where type Key.t=KeyS.t = struct
     val empty= Frame.empty;
     val insert= Frame.insert;
     val lookup= Frame.lookup;
+    
+    fun transform f (Empty) = Empty
+    |   transform f (Two(left,x,right)) = Two(transform f left, f x, transform f right)
+    |   transform f (Three(left,x,center,y,right)) = Three(transform f left, f x, transform f center, f y, transform f right);
+    
 end;
     
 functor TYPECHECK(U:UNIFIER) = struct
@@ -150,6 +157,9 @@ functor TYPECHECK(U:UNIFIER) = struct
     structure stringDict_t = TSet(structure KeyS=StringCmp);
 
     val namesOfThingsToGeneralize : string list ref = ref [];
+    
+    fun needGeneralization (name: label) [] = false
+    |   needGeneralization name (a::at) = if name=a then true else needGeneralization name at;
     
     datatype ttype = VAR_ of label
                     | GENERIC_ of label
@@ -213,13 +223,17 @@ functor TYPECHECK(U:UNIFIER) = struct
         val new_variable = VAR_ (get_new_type_variable_name ());
     in makeTypeVariablesForLetInContext rest (add_tterm_to_context label new_variable context) end;
     
-    fun generalizeContextWithHint context namesToGeneralize = let
-        fun generalizeName (name,context) = case context_t.lookup(name,context)
-            of NONE => context
-            |  SOME(t) => (case t
-                of VAR_(l) => context_t.insert((name,GENERIC_(l)),context)
-                |  _ => context);
-    in foldl generalizeName context namesToGeneralize end;
+    local
+        fun generalizeIfNecessary namesToGeneralize (VAR_(n)) = if needGeneralization n namesToGeneralize then GENERIC_(n) else VAR_(n)
+        |   generalizeIfNecessary namesToGeneralize (GENERIC_(n)) = GENERIC_(n)
+        |   generalizeIfNecessary namesToGeneralize (ARR_(a,b)) = ARR_(generalizeIfNecessary namesToGeneralize a,generalizeIfNecessary namesToGeneralize b)
+        |   generalizeIfNecessary namesToGeneralize (LIST_(a)) = LIST_(generalizeIfNecessary namesToGeneralize a)
+        |   generalizeIfNecessary namesToGeneralize (INT_) = INT_;
+        
+        fun trans namesToGeneralize (key,value) = (key,generalizeIfNecessary namesToGeneralize value);
+    in
+        fun generalizeContextWithHint context namesToGeneralize = context_t.transform (trans namesToGeneralize) context;
+    end;
     
     fun impl (Number _) context : (TTerm*substitution) option = SOME(INT,[])
     |   impl (Label label) context = (case get_label_instance label context
