@@ -235,6 +235,27 @@ functor TYPECHECK(U:UNIFIER) = struct
         fun generalizeContextWithHint context namesToGeneralize = context_t.transform (trans namesToGeneralize) context;
     end;
     
+    local
+        fun substitute var term [] = []
+        |   substitute var term ((Var v)::rest) = (if v=var then term else (Var v))::(substitute var term rest)
+        |   substitute var term ((Fun (name,tl))::rest) = (Fun (name,substitute var term tl))::(substitute var term rest);
+
+        fun substituteall [] l = l
+        |   substituteall ((name,term)::rest) l = substituteall rest (substitute name term l);
+    in
+        fun consumeSubstitution (subs: substitution) (term: TTerm) : TTerm = term_to_TTerm (hd(substituteall subs [TTerm_to_term term]));
+    end;
+    
+    local
+        fun wrap (VAR(n)) = VAR_(n)
+        |   wrap (ARR(a,b)) = ARR_(wrap a,wrap b)
+        |   wrap (LIST(a)) = LIST_(wrap a)
+        |   wrap (INT) = INT_;
+        fun consumeOne substitution ((label,_),context) = context_t.insert((label,wrap (consumeSubstitution substitution (valOf (get_label_instance label context)))),context);
+    in
+        fun consumeSubstitutionForLabelToTermList labelToTermList (substitution: substitution) context = foldl (consumeOne substitution) context labelToTermList;
+    end;
+    
     fun impl (Number _) context : (TTerm*substitution) option = SOME(INT,[])
     |   impl (Label label) context = (case get_label_instance label context
                                         of NONE => NONE
@@ -286,9 +307,11 @@ functor TYPECHECK(U:UNIFIER) = struct
         val () = namesOfThingsToGeneralize := [];
         val new_context = makeTypeVariablesForLetInContext labelToTermList context; (* Tworzy nowe zmienne typowe i umieszcza je w kontekście *)
         val new_substitution = makeSubstitutionForLet labelToTermList new_context; (* Tworzy podstawienie nowych zmiennych typowych do typów poszczególnych termów w LET *)
-        val generalized_context = generalizeContextWithHint new_context (!namesOfThingsToGeneralize); (* Generalizuje zmienne w kontekście wymienione (z nazwy) w danym zbiorze *)
+    in case new_substitution of NONE => (NONE,new_context) | SOME(s) => let
+        val new_context2 = consumeSubstitutionForLabelToTermList labelToTermList s new_context;
+        val generalized_context = generalizeContextWithHint new_context2 (!namesOfThingsToGeneralize); (* Generalizuje zmienne w kontekście wymienione (z nazwy) w danym zbiorze *)
         val () = namesOfThingsToGeneralize := namesOfThingsToGeneralizeBackup;
-    in (new_substitution,generalized_context) end
+    in (new_substitution,generalized_context) end end
     and makeSubstitutionForLet labelToTermList context = let
         fun handleOneLabelToTerm (_,NONE) = NONE
         |   handleOneLabelToTerm ((label, term),SOME(sub)) = case impl term context
@@ -314,16 +337,7 @@ functor TYPECHECK(U:UNIFIER) = struct
         fun parse_context (context: (string * TTerm) list): ttype context_t.dict = foldl (fn ((l,t),b) => context_t.insert((l,parse_TTerm t),b) ) context_t.empty context;
     end;
 
-    local
-        fun substitute var term [] = []
-        |   substitute var term ((Var v)::rest) = (if v=var then term else (Var v))::(substitute var term rest)
-        |   substitute var term ((Fun (name,tl))::rest) = (Fun (name,substitute var term tl))::(substitute var term rest);
-
-        fun substituteall [] l = l
-        |   substituteall ((name,term)::rest) l = substituteall rest (substitute name term l);
-    in
-        fun typecheck lmterm context = case impl lmterm (parse_context context)
-                                        of NONE => NONE
-                                        |  SOME(t,subs) => SOME (term_to_TTerm (hd(substituteall subs [TTerm_to_term t])));
-    end;
+    fun typecheck lmterm context = case impl lmterm (parse_context context)
+                                    of NONE => NONE
+                                    |  SOME(t,subs) => SOME (consumeSubstitution subs t);
 end
