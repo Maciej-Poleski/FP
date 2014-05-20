@@ -171,7 +171,7 @@ functor TYPECHECK(U:UNIFIER) = struct
         val instance_count = ref 0;
     
         fun make_new_instance_name l = let
-            val result = concat [l,Int.toString (!instance_count)];
+            val result = concat [l,"_",Int.toString (!instance_count)];
             val () = namesOfThingsToGeneralize:=  (result::(!namesOfThingsToGeneralize));
             in result end;
         fun impl ((INT_): ttype) : TTerm = INT
