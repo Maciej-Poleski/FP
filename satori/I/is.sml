@@ -289,7 +289,7 @@ functor TYPECHECK(U:UNIFIER) = struct
     in makeTypeVariablesForLetInContext rest (add_tterm_to_context label new_variable context) end;
     
     local
-        fun generalizeIfNecessary (callback: callback_t) namesToGeneralize (VAR_(n)) = if needGeneralization n namesToGeneralize then GENERIC_(n,callback) else VAR_(n)
+        fun generalizeIfNecessary (callback: callback_t) namesToGeneralize (VAR_(n)) = if needGeneralization n namesToGeneralize then (print (concat ["Generalizuje ",n,"\n"]); GENERIC_(n,callback)) else VAR_(n)
         |   generalizeIfNecessary callback namesToGeneralize (GENERIC_(n,f)) = GENERIC_(n,f)
         |   generalizeIfNecessary callback namesToGeneralize (ARR_(a,b)) = ARR_(generalizeIfNecessary callback namesToGeneralize a,generalizeIfNecessary callback namesToGeneralize b)
         |   generalizeIfNecessary callback namesToGeneralize (LIST_(a)) = LIST_(generalizeIfNecessary callback namesToGeneralize a)
@@ -297,17 +297,17 @@ functor TYPECHECK(U:UNIFIER) = struct
         
         fun trans namesToGeneralize (callback: callback_t) (key,value) = (key,generalizeIfNecessary callback namesToGeneralize value);
     in
-        fun generalizeContextWithHint context (callback: callback_t)  namesToGeneralize = context_t.transform (trans namesToGeneralize callback) context;
+        fun generalizeContextWithHint context (callback: callback_t) namesToGeneralize = (print (concat ["Do generalizacji: ",String.concatWith ", " namesToGeneralize,"\n"]); context_t.transform (trans namesToGeneralize callback) context);
     end;
     
     local
-        fun wrap (VAR(n)) = VAR_(n)
-        |   wrap (ARR(a,b)) = ARR_(wrap a,wrap b)
-        |   wrap (LIST(a)) = LIST_(wrap a)
-        |   wrap (INT) = INT_;
-        fun consumeOne substitution ((label,_),context) = context_t.insert((label,wrap (consumeSubstitution substitution (valOf (get_label_instance label context)))),context);
+        fun wrap namesOfThingsToGeneralize callback (VAR(n)) = if needGeneralization n namesOfThingsToGeneralize then GENERIC_(n,callback) else VAR_(n)
+        |   wrap namesOfThingsToGeneralize callback (ARR(a,b)) = ARR_(wrap namesOfThingsToGeneralize callback a,wrap namesOfThingsToGeneralize callback b)
+        |   wrap namesOfThingsToGeneralize callback (LIST(a)) = LIST_(wrap namesOfThingsToGeneralize callback a)
+        |   wrap namesOfThingsToGeneralize callback (INT) = INT_;
+        fun consumeOne substitution namesOfThingsToGeneralize callback ((label,_),context) = context_t.insert((label,wrap namesOfThingsToGeneralize callback (consumeSubstitution substitution (valOf (get_label_instance label context)))),context);
     in
-        fun consumeSubstitutionForLabelToTermList labelToTermList (substitution: substitution) context = foldl (consumeOne substitution) context labelToTermList;
+        fun consumeSubstitutionForLabelToTermList labelToTermList (substitution: substitution) context namesOfThingsToGeneralize callback = foldl (consumeOne substitution namesOfThingsToGeneralize callback) context labelToTermList;
     end;
     
     local
@@ -397,16 +397,16 @@ functor TYPECHECK(U:UNIFIER) = struct
     |   impl (Let (labelToTermList, body)) context = let
         val (substitution,new_context,generic_to_inst_list) = handleLetDefinitions labelToTermList context;
     in case substitution of NONE => NONE | SOME(ss) => let
-(*         val (substitutionL,substitutionR) = substitution_to_termLists ss; *)
+        val (substitutionL,substitutionR) = substitution_to_termLists ss;
         in case impl body new_context
             of NONE => NONE
             |  SOME(upperType,subs) => let
-(*                 val (subsL,subsR) = substitution_to_termLists subs; *)
+                val (subsL,subsR) = substitution_to_termLists subs;
                 val () = dump_substitution ss;
                 val () = dump_substitution subs;
                 val result_substitution = make_substitution_with_generics_instantiated (ss@subs) (!generic_to_inst_list);
+(*                 val result_substitution = U.lunify (SOME (substitutionL @ subsL, substitutionR @ subsR)); *)
 (*                 val () = dump_substitution (valOf result_substitution); *)
-(*                 val resultSubstitution = U.lunify (SOME (substitutionL @ subsL, substitutionR @ subsR)); *)
             in case result_substitution of NONE => NONE | SOME(s) => SOME(upperType,s) end end end
     and handleLetDefinitions labelToTermList context : substitution option * ttype context_t.dict * label list genericDict_t.dict ref = let
         val namesOfThingsToGeneralizeBackup = !namesOfThingsToGeneralize; (* Przywrócić po zakończeniu *)
@@ -415,8 +415,6 @@ functor TYPECHECK(U:UNIFIER) = struct
         val () = dump_context new_context;
         val new_substitution = makeSubstitutionForLet labelToTermList new_context; (* Tworzy podstawienie nowych zmiennych typowych do typów poszczególnych termów w LET *)
     in case new_substitution of NONE => (NONE,new_context,ref genericDict_t.empty) | SOME(s) => let
-(*         val new_context2 = consumeSubstitutionForLabelToTermList labelToTermList s new_context; *)
-(*         val () = dump_context new_context2; *)
         val generic_to_instance_list = ref genericDict_t.empty;
         fun callback (generic_label,var_label) = let
             val instance_list = case genericDict_t.lookup(generic_label,!generic_to_instance_list)
@@ -426,10 +424,12 @@ functor TYPECHECK(U:UNIFIER) = struct
             val result = genericDict_t.insert((generic_label,instance_list_final),!generic_to_instance_list);
             val () = generic_to_instance_list := result;
             in () end;
-        val generalized_context = generalizeContextWithHint new_context callback (!namesOfThingsToGeneralize); (* Generalizuje zmienne w kontekście wymienione (z nazwy) w danym zbiorze *)
-        val () = dump_context generalized_context;
+        val new_context2 = consumeSubstitutionForLabelToTermList labelToTermList s new_context (!namesOfThingsToGeneralize) callback;
+        val () = dump_context new_context2;
+(*         val generalized_context = generalizeContextWithHint new_context2 callback (!namesOfThingsToGeneralize); (* Generalizuje zmienne w kontekście wymienione (z nazwy) w danym zbiorze *) *)
+(*         val () = dump_context generalized_context; *)
         val () = namesOfThingsToGeneralize := namesOfThingsToGeneralizeBackup;
-    in (new_substitution,generalized_context,generic_to_instance_list) end end
+    in (new_substitution,new_context2,generic_to_instance_list) end end
     and makeSubstitutionForLet labelToTermList context : substitution option = let
         fun handleOneLabelToTerm (_,NONE) = NONE
         |   handleOneLabelToTerm ((label, term),SOME(sub)) = case impl term context

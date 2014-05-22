@@ -9,7 +9,7 @@ in
 (*                         ("PLUS",INT --> INT --> INT), *)
 (*                         ("CONS", VAR "a" --> (LIST (VAR "a")) --> (LIST (VAR "a"))), *)
 (*                         ("NIL", LIST (VAR "a")), *)
-(*                         ("hd",(LIST (VAR "a")) --> VAR "a"), *)
+                        ("hd",(LIST (VAR "a")) --> VAR "a")
 (*                         ("IF",INT --> VAR "a" --> VAR "a" --> VAR "a"), *)
 (*                         ("tl",LIST (VAR "a") --> LIST (VAR "a")) *)
                         ]
@@ -56,8 +56,8 @@ let
     fun id2 a = let
         val b = id a;
         val c = hd b;
-    in id c end; (* Tutaj tworzona jest instancja zgeneralizowanej c gubiąc ograniczenia nałożone na c w podstawieniu *)
-in id2 end;
+        in id c end; (* Tutaj tworzona jest instancja zgeneralizowanej c gubiąc ograniczenia nałożone na c w podstawieniu *)
+    in id2 end;
 
 val letid2=Let([("b",App(Label "id",Label "a")),("c",App(Label "hd", Label "b"))],App(Label "id",Label "c"));
 val t4=Let([("id",Abs("x",Label "x")),("id2",Abs("a",letid2))],Label "id2");
