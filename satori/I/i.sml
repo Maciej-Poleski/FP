@@ -46,3 +46,6 @@ structure Unifier:UNIFIER = struct
                         of NONE => NONE
                         |  SOME(r) => SOME(v@r) end end;
 end;
+
+Control.Print.printDepth := 100;
+Control.Print.printLength  := 200;

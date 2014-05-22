@@ -6,12 +6,12 @@ local
                 fun a --> b= ARR (a,b)
 in
                 val context= [
-                        ("PLUS",INT --> INT --> INT),
-                        ("CONS", VAR "a" --> (LIST (VAR "a")) --> (LIST (VAR "a"))),
-                        ("NIL", LIST (VAR "a")),
-                        ("hd",(LIST (VAR "a")) --> VAR "a"),
-                        ("IF",INT --> VAR "a" --> VAR "a" --> VAR "a"),
-                        ("tl",LIST (VAR "a") --> LIST (VAR "a"))
+(*                         ("PLUS",INT --> INT --> INT), *)
+(*                         ("CONS", VAR "a" --> (LIST (VAR "a")) --> (LIST (VAR "a"))), *)
+(*                         ("NIL", LIST (VAR "a")), *)
+(*                         ("hd",(LIST (VAR "a")) --> VAR "a"), *)
+(*                         ("IF",INT --> VAR "a" --> VAR "a" --> VAR "a"), *)
+(*                         ("tl",LIST (VAR "a") --> LIST (VAR "a")) *)
                         ]
 end;
 
@@ -49,4 +49,15 @@ val let2=Let([("firstL",App(Label "hd",Label "l")),("restL",App(Label "tl",Label
 
 val concatt=Abs("l",App(App(App(Label "IF",App(Label "isNil",Label "l")),Label "NIL"),let2));
 
-val t3=Let([("isNil",Abs("l",Number 0)),("concat",concatt)],Label "concat");
+val t3=Let([("isNil",Abs("l",Number 0)),("concat",concatt)],Label "isNil");
+
+let
+    fun id x = x;
+    fun id2 a = let
+        val b = id a;
+        val c = hd b;
+    in id c end; (* Tutaj tworzona jest instancja zgeneralizowanej c gubiąc ograniczenia nałożone na c w podstawieniu *)
+in id2 end;
+
+val letid2=Let([("b",App(Label "id",Label "a")),("c",App(Label "hd", Label "b"))],App(Label "id",Label "c"));
+val t4=Let([("id",Abs("x",Label "x")),("id2",Abs("a",letid2))],Label "id2");

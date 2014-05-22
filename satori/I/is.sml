@@ -11,6 +11,8 @@ signature OSET= sig
     val empty: oset;
     val insert: Key.t * oset -> oset
     val member: Key.t * oset -> bool        
+    
+    val collect: oset -> Key.t list;
 end;
 
 signature DICT= sig
@@ -23,6 +25,8 @@ signature DICT= sig
     val lookup: (Key.t * 'vt dict) -> 'vt option;
     
     val transform: (Key.t * 'vt -> Key.t * 'vt) -> 'vt dict -> 'vt dict;
+    
+    val app: (Key.t * 'vt -> unit) -> 'vt dict -> unit;
 end;
 datatype 'a node = Two of 'a node * 'a * 'a node |
                 Three of 'a node * 'a * 'a node * 'a * 'a node |
@@ -120,7 +124,15 @@ functor TSet(structure KeyS:COMPARABLE):>OSET where type Key.t=KeyS.t = struct
 
         val empty= Frame.empty;
         val insert= Frame.insert;
-        val member= Frame.lookup;       
+        val member= Frame.lookup;      
+        
+        fun collect set = let
+            val result = ref [];
+            fun travel (Empty) = ()
+            |   travel (Two(left,x,right)) = (travel left; result := x :: (!result); travel right)
+            |   travel (Three(left,x,center,y,right)) = (travel left; result := x ::(!result); travel center; result := y ::(!result); travel right);
+            val () = travel set;
+        in !result end;
 end;
 
 functor TDict(structure KeyS:COMPARABLE):>DICT where type Key.t=KeyS.t = struct
@@ -138,6 +150,10 @@ functor TDict(structure KeyS:COMPARABLE):>DICT where type Key.t=KeyS.t = struct
     |   transform f (Two(left,x,right)) = Two(transform f left, f x, transform f right)
     |   transform f (Three(left,x,center,y,right)) = Three(transform f left, f x, transform f center, f y, transform f right);
     
+    fun app f (Empty) = ()
+    |   app f (Two(left,x,right)) = (app f left; f x; app f right)
+    |   app f (Three(left,x,center,y,right)) = (app f left; f x; app f center; f y; app f right);
+    
 end;
     
 functor TYPECHECK(U:UNIFIER) = struct
@@ -153,19 +169,78 @@ functor TYPECHECK(U:UNIFIER) = struct
         fun cmp (a,b) = String.compare(a,b);
     end;
     
+    structure GenericCmp: COMPARABLE = struct
+        type t = string; (* Nazwa generica *)
+        fun cmp (a,b) = String.compare(a,b);
+    end;
+    
     structure context_t = TDict(structure KeyS=LabelCmp);
     structure stringDict_t = TSet(structure KeyS=StringCmp);
+    structure genericDict_t = TDict(structure KeyS=GenericCmp);
+    structure genericSet_t = TSet(structure KeyS=GenericCmp);
 
     val namesOfThingsToGeneralize : string list ref = ref [];
     
     fun needGeneralization (name: label) [] = false
     |   needGeneralization name (a::at) = if name=a then true else needGeneralization name at;
     
+    type callback_t = label * label -> unit;
+    
     datatype ttype = VAR_ of label
-                    | GENERIC_ of label
+                    | GENERIC_ of label * callback_t
                     | ARR_ of ttype * ttype
                     | LIST_ of ttype
                     | INT_;
+                    
+    fun ttype_to_string (VAR_(l)) : string = concat ["",l,""]
+    |   ttype_to_string (GENERIC_(l,_)) = concat ["'",l,""]
+    |   ttype_to_string (ARR_(a,b)) = concat ["(",ttype_to_string a," -> ",ttype_to_string b,")"]
+    |   ttype_to_string (LIST_(a)) = concat ["[",ttype_to_string a,"]"]
+    |   ttype_to_string (INT_) = "INT_";
+    
+    local
+        fun f (label,ttype) : unit = print (concat [label,": ",ttype_to_string ttype,"\n"]);
+    in
+        fun dump_context context = (context_t.app f context; print "\n");
+    end;
+        
+    (* Konwertuje TTerm do term na potrzeby unifikacji *)
+    fun TTerm_to_term (VAR l) = Var (explode l)
+    |   TTerm_to_term (ARR (a,b)) = Fun ((explode "ARR"), map TTerm_to_term [a,b])
+    |   TTerm_to_term (LIST (a)) = Fun ((explode "LIST"), [TTerm_to_term a])
+    |   TTerm_to_term (INT) = Fun ((explode "INT"),[]);
+    
+    (* Konwertuje term do TTerm aby powrócić z unifikacji do formatu wyjściowego *)
+    fun term_to_TTerm (Var name) = VAR (implode name)
+    |   term_to_TTerm (Fun (name, termList)) = case implode name
+                                                of "ARR" => ARR (term_to_TTerm (hd termList), term_to_TTerm (hd(tl termList)))
+                                                |  "LIST" => LIST (term_to_TTerm (hd termList))
+                                                |  "INT" => INT;
+        
+    local
+        fun substitute var term [] = []
+        |   substitute var term ((Var v)::rest) = (if v=var then term else (Var v))::(substitute var term rest)
+        |   substitute var term ((Fun (name,tl))::rest) = (Fun (name,substitute var term tl))::(substitute var term rest);
+
+        fun substituteall [] l = l
+        |   substituteall ((name,term)::rest) l = substituteall rest (substitute name term l);
+        
+        fun substitute_in_substitution_atom (label,term) (label2,term2) = (label2,hd(substitute label term [term2]));
+        fun substitute_in_substitution ((label,term),(sub: substitution)) : substitution = map (substitute_in_substitution_atom (label,term)) sub;
+    in
+        fun consumeSubstitution (subs: substitution) (term: TTerm) : TTerm = term_to_TTerm (hd(substituteall subs [TTerm_to_term term]));
+        fun fillSubstitution (sub: substitution) : substitution = foldl substitute_in_substitution sub sub;
+    end;
+    
+    local
+        fun term_to_string (Var(l)) : string = implode l
+        |   term_to_string (Fun(name,terms)) = concat [implode name,"(",(String.concatWith "," (map term_to_string terms)),")"];
+        
+        fun line (label, term) : unit = print (concat [implode label," = ",term_to_string term,"\n"]);
+    in
+        fun dump_substitution (substitution: substitution) : unit = (app line (fillSubstitution substitution); print "\n");
+        fun dump_termsPair (left,right) : unit = (ListPair.app (fn (a,b) => print (concat [" ",term_to_string a," = ",term_to_string b,"\n"])) (left,right); print "\n");
+    end;
     
     local
         val instance_count = ref 0;
@@ -176,7 +251,10 @@ functor TYPECHECK(U:UNIFIER) = struct
             in result end;
         fun impl ((INT_): ttype) : TTerm = INT
         |   impl (VAR_ l) = VAR l
-        |   impl (GENERIC_ l) = VAR (make_new_instance_name l)
+        |   impl (GENERIC_ (l,f)) = let
+            val name = (make_new_instance_name l);
+            val () = f(l,name);
+        in VAR(name) end
         |   impl (ARR_ (a,b)) = ARR (impl a, impl b)
         |   impl (LIST_ (a)) = LIST (impl a);
     in
@@ -201,19 +279,6 @@ functor TYPECHECK(U:UNIFIER) = struct
         in result end;
     end;
     
-    (* Konwertuje TTerm do term na potrzeby unifikacji *)
-    fun TTerm_to_term (VAR l) = Var (explode l)
-    |   TTerm_to_term (ARR (a,b)) = Fun ((explode "ARR"), map TTerm_to_term [a,b])
-    |   TTerm_to_term (LIST (a)) = Fun ((explode "LIST"), [TTerm_to_term a])
-    |   TTerm_to_term (INT) = Fun ((explode "INT"),[]);
-    
-    (* Konwertuje term do TTerm aby powrócić z unifikacji do formatu wyjściowego *)
-    fun term_to_TTerm (Var name) = VAR (implode name)
-    |   term_to_TTerm (Fun (name, termList)) = case implode name
-                                                of "ARR" => ARR (term_to_TTerm (hd termList), term_to_TTerm (hd(tl termList)))
-                                                |  "LIST" => LIST (term_to_TTerm (hd termList))
-                                                |  "INT" => INT;
-    
     fun substitution_to_termLists sub = foldr (fn ((n,t),(l,r)) => ((Var n)::l,t::r)) ([],[]) sub;
     
     fun add_tterm_to_context (name: label) (term: ttype) context = context_t.insert((name,term),context);
@@ -224,26 +289,15 @@ functor TYPECHECK(U:UNIFIER) = struct
     in makeTypeVariablesForLetInContext rest (add_tterm_to_context label new_variable context) end;
     
     local
-        fun generalizeIfNecessary namesToGeneralize (VAR_(n)) = if needGeneralization n namesToGeneralize then GENERIC_(n) else VAR_(n)
-        |   generalizeIfNecessary namesToGeneralize (GENERIC_(n)) = GENERIC_(n)
-        |   generalizeIfNecessary namesToGeneralize (ARR_(a,b)) = ARR_(generalizeIfNecessary namesToGeneralize a,generalizeIfNecessary namesToGeneralize b)
-        |   generalizeIfNecessary namesToGeneralize (LIST_(a)) = LIST_(generalizeIfNecessary namesToGeneralize a)
-        |   generalizeIfNecessary namesToGeneralize (INT_) = INT_;
+        fun generalizeIfNecessary (callback: callback_t) namesToGeneralize (VAR_(n)) = if needGeneralization n namesToGeneralize then GENERIC_(n,callback) else VAR_(n)
+        |   generalizeIfNecessary callback namesToGeneralize (GENERIC_(n,f)) = GENERIC_(n,f)
+        |   generalizeIfNecessary callback namesToGeneralize (ARR_(a,b)) = ARR_(generalizeIfNecessary callback namesToGeneralize a,generalizeIfNecessary callback namesToGeneralize b)
+        |   generalizeIfNecessary callback namesToGeneralize (LIST_(a)) = LIST_(generalizeIfNecessary callback namesToGeneralize a)
+        |   generalizeIfNecessary callback namesToGeneralize (INT_) = INT_;
         
-        fun trans namesToGeneralize (key,value) = (key,generalizeIfNecessary namesToGeneralize value);
+        fun trans namesToGeneralize (callback: callback_t) (key,value) = (key,generalizeIfNecessary callback namesToGeneralize value);
     in
-        fun generalizeContextWithHint context namesToGeneralize = context_t.transform (trans namesToGeneralize) context;
-    end;
-    
-    local
-        fun substitute var term [] = []
-        |   substitute var term ((Var v)::rest) = (if v=var then term else (Var v))::(substitute var term rest)
-        |   substitute var term ((Fun (name,tl))::rest) = (Fun (name,substitute var term tl))::(substitute var term rest);
-
-        fun substituteall [] l = l
-        |   substituteall ((name,term)::rest) l = substituteall rest (substitute name term l);
-    in
-        fun consumeSubstitution (subs: substitution) (term: TTerm) : TTerm = term_to_TTerm (hd(substituteall subs [TTerm_to_term term]));
+        fun generalizeContextWithHint context (callback: callback_t)  namesToGeneralize = context_t.transform (trans namesToGeneralize callback) context;
     end;
     
     local
@@ -254,6 +308,54 @@ functor TYPECHECK(U:UNIFIER) = struct
         fun consumeOne substitution ((label,_),context) = context_t.insert((label,wrap (consumeSubstitution substitution (valOf (get_label_instance label context)))),context);
     in
         fun consumeSubstitutionForLabelToTermList labelToTermList (substitution: substitution) context = foldl (consumeOne substitution) context labelToTermList;
+    end;
+    
+    local
+        fun collect_generic_names_from_term (collection: genericSet_t.oset ref) gen_to_inst (VAR(l)) : unit = (case genericDict_t.lookup(l,gen_to_inst)
+                                                                                                                of NONE => ()
+                                                                                                                |  SOME(_) => let
+                                                                                                                    val newCollection = genericSet_t.insert(l,!collection);
+                                                                                                                    val () = collection := newCollection;
+                                                                                                                in () end)
+        | collect_generic_names_from_term collection gen_to_inst (ARR(a,b)) = let
+            val () = collect_generic_names_from_term collection gen_to_inst a;
+            val () = collect_generic_names_from_term collection gen_to_inst b;
+            in () end
+        | collect_generic_names_from_term collection gen_to_inst (LIST(a)) = collect_generic_names_from_term collection gen_to_inst a
+        | collect_generic_names_from_term collection gen_to_inst (INT) = ();
+        fun generic_names_from_term_pair (term1,term2) gen_to_inst = let
+            val col = ref genericSet_t.empty;
+            val () = collect_generic_names_from_term col gen_to_inst term1;
+            val () = collect_generic_names_from_term col gen_to_inst term2;
+        in genericSet_t.collect(!col) end;
+        
+        fun substitute_name_for_name (VAR(l)) from to = if l=from then VAR(to) else VAR(l)
+        |   substitute_name_for_name (ARR(a,b)) from to = ARR(substitute_name_for_name a from to, substitute_name_for_name b from to)
+        |   substitute_name_for_name (LIST(a)) from to = LIST(substitute_name_for_name a from to)
+        |   substitute_name_for_name (INT) from to = INT;
+        
+        fun all_substitutions_for_name term gen_to_inst name = map (substitute_name_for_name term name) (valOf(genericDict_t.lookup(name,gen_to_inst)));
+        
+        fun substitute_generics_in_term gen_to_inst [] (term: TTerm) = [term]
+        |   substitute_generics_in_term gen_to_inst (name::rest) term = List.concat (map (substitute_generics_in_term gen_to_inst rest) (all_substitutions_for_name term gen_to_inst name));
+        fun instantiate_subs_in_one_equation leftTerm rightTerm gen_to_inst = let
+            val names = generic_names_from_term_pair (leftTerm,rightTerm) gen_to_inst;
+            val leftResult = substitute_generics_in_term gen_to_inst names leftTerm;
+            val rightResult = substitute_generics_in_term gen_to_inst names rightTerm;
+        in (leftResult,rightResult) end;
+        (* 1 Zebrać nazwy genericów z termu
+           2 Dla każdej nazwy zrobić wszystkie podstawienia
+           3 Zwrócić *)
+           
+        fun impl (leftTerms,rightTerms) gen_to_inst = let
+            fun aux (leftTerm,rightTerm,(resultLeft,resultRight)) = let
+                val (left,right) = instantiate_subs_in_one_equation leftTerm rightTerm gen_to_inst;
+            in (left@resultLeft,right@resultRight) end;
+            val (left,right) = ListPair.foldl aux ([],[]) (map term_to_TTerm leftTerms,map term_to_TTerm rightTerms);
+            val () = dump_termsPair (map TTerm_to_term left,map TTerm_to_term right);
+        in U.lunify(SOME((map TTerm_to_term left,map TTerm_to_term right))) end;
+    in
+        fun make_substitution_with_generics_instantiated (substitution: substitution) (generic_to_instance_list: label list genericDict_t.dict) : substitution option = impl (substitution_to_termLists substitution) generic_to_instance_list;
     end;
     
     fun impl (Number _) context : (TTerm*substitution) option = SOME(INT,[])
@@ -293,35 +395,52 @@ functor TYPECHECK(U:UNIFIER) = struct
                 val resultSubstitution = U.lunify (SOME (leftTerms,rightTerms));
             in case resultSubstitution of NONE => NONE | SOME(s) => SOME(result_variable,s) end end
     |   impl (Let (labelToTermList, body)) context = let
-        val (substitution,new_context) = handleLetDefinitions labelToTermList context;
+        val (substitution,new_context,generic_to_inst_list) = handleLetDefinitions labelToTermList context;
     in case substitution of NONE => NONE | SOME(ss) => let
-        val (substitutionL,substitutionR) = substitution_to_termLists ss;
+(*         val (substitutionL,substitutionR) = substitution_to_termLists ss; *)
         in case impl body new_context
             of NONE => NONE
             |  SOME(upperType,subs) => let
-                val (subsL,subsR) = substitution_to_termLists subs;
-                val resultSubstitution = U.lunify (SOME (substitutionL @ subsL, substitutionR @ subsR));
-            in case resultSubstitution of NONE => NONE | SOME(s) => SOME(upperType,s) end end end
-    and handleLetDefinitions labelToTermList context = let
+(*                 val (subsL,subsR) = substitution_to_termLists subs; *)
+                val () = dump_substitution ss;
+                val () = dump_substitution subs;
+                val result_substitution = make_substitution_with_generics_instantiated (ss@subs) (!generic_to_inst_list);
+(*                 val () = dump_substitution (valOf result_substitution); *)
+(*                 val resultSubstitution = U.lunify (SOME (substitutionL @ subsL, substitutionR @ subsR)); *)
+            in case result_substitution of NONE => NONE | SOME(s) => SOME(upperType,s) end end end
+    and handleLetDefinitions labelToTermList context : substitution option * ttype context_t.dict * label list genericDict_t.dict ref = let
         val namesOfThingsToGeneralizeBackup = !namesOfThingsToGeneralize; (* Przywrócić po zakończeniu *)
         val () = namesOfThingsToGeneralize := [];
         val new_context = makeTypeVariablesForLetInContext labelToTermList context; (* Tworzy nowe zmienne typowe i umieszcza je w kontekście *)
+        val () = dump_context new_context;
         val new_substitution = makeSubstitutionForLet labelToTermList new_context; (* Tworzy podstawienie nowych zmiennych typowych do typów poszczególnych termów w LET *)
-    in case new_substitution of NONE => (NONE,new_context) | SOME(s) => let
-        val new_context2 = consumeSubstitutionForLabelToTermList labelToTermList s new_context;
-        val generalized_context = generalizeContextWithHint new_context2 (!namesOfThingsToGeneralize); (* Generalizuje zmienne w kontekście wymienione (z nazwy) w danym zbiorze *)
+    in case new_substitution of NONE => (NONE,new_context,ref genericDict_t.empty) | SOME(s) => let
+(*         val new_context2 = consumeSubstitutionForLabelToTermList labelToTermList s new_context; *)
+(*         val () = dump_context new_context2; *)
+        val generic_to_instance_list = ref genericDict_t.empty;
+        fun callback (generic_label,var_label) = let
+            val instance_list = case genericDict_t.lookup(generic_label,!generic_to_instance_list)
+                                    of NONE => []
+                                    |  SOME(l) => l
+            val instance_list_final = var_label::instance_list;
+            val result = genericDict_t.insert((generic_label,instance_list_final),!generic_to_instance_list);
+            val () = generic_to_instance_list := result;
+            in () end;
+        val generalized_context = generalizeContextWithHint new_context callback (!namesOfThingsToGeneralize); (* Generalizuje zmienne w kontekście wymienione (z nazwy) w danym zbiorze *)
+        val () = dump_context generalized_context;
         val () = namesOfThingsToGeneralize := namesOfThingsToGeneralizeBackup;
-    in (new_substitution,generalized_context) end end
-    and makeSubstitutionForLet labelToTermList context = let
+    in (new_substitution,generalized_context,generic_to_instance_list) end end
+    and makeSubstitutionForLet labelToTermList context : substitution option = let
         fun handleOneLabelToTerm (_,NONE) = NONE
         |   handleOneLabelToTerm ((label, term),SOME(sub)) = case impl term context
             of NONE => NONE
             |  SOME(parsedType,parsedSubs) => let
-                val (subsL,subsR) = substitution_to_termLists sub;
-                val (parsedL,parsedR) = substitution_to_termLists parsedSubs;
+                val (subsL,subsR) = substitution_to_termLists (sub @ parsedSubs);
+(*                 val (parsedL,parsedR) = substitution_to_termLists parsedSubs; *)
                 val left = TTerm_to_term (valOf (get_label_instance label context));
                 val right = TTerm_to_term parsedType;
-                val result = U.lunify(SOME(subsL@parsedL@[left],subsR@parsedR@[right]));
+                val result = U.lunify(SOME(subsL@[left],subsR@[right]));
+(*                 val result = U.lunify(SOME(subsL@parsedL@[left],subsR@parsedR@[right])); *)
             in result end;
     in foldl handleOneLabelToTerm (SOME([])) labelToTermList end;
             
@@ -329,7 +448,9 @@ functor TYPECHECK(U:UNIFIER) = struct
         to co trzeba i zwrócić podstawienie oraz nowy kontekst *)
     
     local       (* Generalizuje TTerm do ttype *)
-        fun parse_TTerm ((VAR label): TTerm) : ttype = GENERIC_ label
+        fun nop_callback _ = ();
+    
+        fun parse_TTerm ((VAR label): TTerm) : ttype = GENERIC_ (label,nop_callback)
         |   parse_TTerm (ARR (a,b)) = ARR_ (parse_TTerm a, parse_TTerm b)
         |   parse_TTerm (LIST a) = LIST_ (parse_TTerm a)
         |   parse_TTerm (INT) = INT_;
