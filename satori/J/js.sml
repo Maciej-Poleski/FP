@@ -165,7 +165,7 @@ fun get_class (Node(r,_,_,_,_,_,_)) = r;
 fun get_acyclic (Node(_,_,_,_,_,r,_)) = r;
 fun get_visited (Node(_,_,_,_,r,_,_)) = r;
 
-fun node_with_size_vars_schema (Node(a,_,_,d,e,f,_)) size vars schema = Node(a,size,schema,d,e,f,vars);
+fun node_with_size_vars_schema_meta (Node(a,_,_,_,e,f,_)) size vars schema meta = Node(a,size,schema,meta,e,f,vars);
 fun node_with_class (Node(_,b,c,d,e,f,g)) class = Node(class,b,c,d,e,f,g);
 fun node_with_visited (Node(a,b,c,d,_,f,g)) visited = Node(a,b,c,d,visited,f,g);
 fun node_with_acyclic (Node(a,b,c,d,e,_,g)) acyclic = Node(a,b,c,d,e,acyclic,g);
@@ -252,12 +252,12 @@ in
 
 fun unify (term1: term) (term2: term) : substitution option = let
     val (G,t1id,t2id) = build_graph(term1,term2);
-    val result = ref (SOME []);
+    val result = ref (SOME[]);
     
     fun get_node (id:int) : node = !(Vector.sub(G,id));
     fun set_node ((id:int),(node: node)) = (Vector.sub(G,id)) := node;
     
-    fun die (): unit = result := NONE;
+    fun die (): unit = (result := NONE);
     
     fun find((s_id: int)) : int = let
     val node = get_node s_id;
@@ -274,10 +274,10 @@ fun unify (term1: term) (term2: term) : substitution option = let
     val t_node = get_node t_id;
     val new_size = (get_size s_node) + (get_size t_node);
     in if (get_size s_node) >= (get_size t_node) then (
-        set_node (s_id,node_with_size_vars_schema s_node new_size (concat_vars(s_node,t_node)) (case get_schema s_node of Var(_) => get_schema t_node | Fun(a,b) => Fun(a,b)));
+        set_node (s_id,node_with_size_vars_schema_meta s_node new_size (concat_vars(s_node,t_node)) (case get_schema s_node of Var(_) => get_schema t_node | Fun(a,b) => Fun(a,b)) (case get_term_meta_info s_node of Var_(_) => get_term_meta_info t_node | Fun_(a,b) => Fun_(a,b) ));
         set_node (t_id,node_with_class t_node s_id))
     else (
-        set_node (t_id,node_with_size_vars_schema t_node new_size (concat_vars(t_node,s_node)) (case get_schema t_node of Var(_) => get_schema s_node | Fun(a,b) => Fun(a,b)));
+        set_node (t_id,node_with_size_vars_schema_meta t_node new_size (concat_vars(t_node,s_node)) (case get_schema t_node of Var(_) => get_schema s_node | Fun(a,b) => Fun(a,b)) (case get_term_meta_info t_node of Var_(_) => get_term_meta_info s_node | Fun_(a,b) => Fun_(a,b) ));
         set_node (s_id,node_with_class s_node t_id)) end;
     
     fun unif_closure((s_id: int),(t_id: int)) : unit = if not (isSome (!result)) then () else let
@@ -304,6 +304,7 @@ fun unify (term1: term) (term2: term) : substitution option = let
         in () end;
     
     fun find_solution((s_id: int)) : unit = if not (isSome (!result)) then () else let
+(*         val () = print (concat ["find_solution ",Int.toString s_id,"\n"]); *)
         val s_real_id = find s_id;
         val s_real_node = get_node s_real_id;
         val s_schema = get_schema s_real_node;
