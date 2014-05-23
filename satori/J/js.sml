@@ -141,8 +141,12 @@ local
 
 datatype term_meta_info = Var_ of string (* Zachowana nazwa *)
                         | Fun_ of string * int list; (* Zachowana nazwa, arność funkcji *)
-
-datatype term_meta_name = Var__ of string | Fun__ of string;
+                        
+datatype term_with_id = Var__ of int * term  (* Współdzielony identyfikator + term *)
+                      | Fun__ of int * term_with_id list * term (* Unikalny identyfikator + identyfikatory argumentów + term *)
+                        
+fun get_id (Var__(id,_)) = id
+|   get_id (Fun__(id,_,_)) = id;
                         
 datatype node = 
     Node of int (* class pointer *)
@@ -154,89 +158,173 @@ datatype node =
           * name list (* vars - jako nazwy zmiennych *)
           ;
 
-structure c_term_meta_info: COMPARABLE= struct
-        type t= term_meta_name;
-        fun cmp ((Var__(a)),(Var__(b))) = String.compare(a,b)
-        |   cmp ((Var__(_)),(Fun__(_))) = LESS
-        |   cmp ((Fun__(_)),(Var__(_))) = GREATER
-        |   cmp ((Fun__(a)),(Fun__(b))) = String.compare(a,b);
-end;
+fun get_term_meta_info (Node(_,_,_,r,_,_,_)) = r;
+fun get_size (Node(_,r,_,_,_,_,_)) = r;
+fun get_schema (Node(_,_,r,_,_,_,_)) = r;
+fun get_class (Node(r,_,_,_,_,_,_)) = r;
+fun get_acyclic (Node(_,_,_,_,_,r,_)) = r;
+fun get_visited (Node(_,_,_,_,r,_,_)) = r;
 
+fun node_with_size_vars_schema (Node(a,_,_,d,e,f,_)) size vars schema = Node(a,size,schema,d,e,f,vars);
+fun node_with_class (Node(_,b,c,d,e,f,g)) class = Node(class,b,c,d,e,f,g);
+fun node_with_visited (Node(a,b,c,d,_,f,g)) visited = Node(a,b,c,d,visited,f,g);
+fun node_with_acyclic (Node(a,b,c,d,e,_,g)) acyclic = Node(a,b,c,d,e,acyclic,g);
+
+fun for_each_var (Node(_,_,_,_,_,_,vars)) f = app f vars;
+
+fun concat_vars ((Node(_,_,_,_,_,_,a)),(Node(_,_,_,_,_,_,b))) = a@b;
+          
 structure cInt: COMPARABLE= struct
         type t= int;
         val cmp= Int.compare;
 end;
 
-structure term_meta_info_dict_t= TDict(structure KeyS=c_term_meta_info);
-structure id_to_term_dict_t = TDict(structure KeyS=cInt);
+structure cString: COMPARABLE= struct
+    type t= string;
+    val cmp = String.compare;
+end;
 
-fun convert_term_to_meta (Var(name)) : (term_meta_name*int) = (Var__(implode name),(~1))
-|   convert_term_to_meta (Fun(name,args)) = (Fun__(implode name),length args);
+structure var_dict_t= TDict(structure KeyS=cString);
+structure id_to_term_dict_t = TDict(structure KeyS=cInt);
 
 fun get_next_id (next_id: int ref) = let
     val result = !next_id;
     val () = next_id := result+1;
     in result end;
 
-(* Tworzy jeśli trzeba i zwraca identyfikator danego termu. Nie powiedzie się, jeżeli arność 
-   symboli funkcyjnych nie jest zachowana. *)
-fun get_node_id (mapping,rev_mapping,next_id, term) : int option = let
-    val (term_meta,arity) = convert_term_to_meta term;
-    in case term_meta_info_dict_t.lookup(term_meta,!mapping)
-        of SOME(id,f_arity) => if arity <> f_arity then NONE else SOME(id)
-        |  NONE => (case term
-                    of Var(name) => let
-                        val id = get_next_id next_id;
-                        val new_mapping = term_meta_info_dict_t.insert((term_meta,(id,~1)),!mapping);
-                        val () = mapping := new_mapping;
-                        val new_rev_mapping = id_to_term_dict_t.insert((id,term),!rev_mapping);
-                        val () = rev_mapping := new_rev_mapping;
-                        in SOME(id) end
-                    |  Fun(name,args) => let
-                        val id = get_next_id next_id;
-                        val new_mapping = term_meta_info_dict_t.insert((term_meta,(id,arity)),!mapping);
-                        val () = mapping := new_mapping;
-                        val new_rev_mapping = id_to_term_dict_t.insert((id,term),!rev_mapping);
-                        val () = rev_mapping := new_rev_mapping;
-                        val to_check = map (fn (a) => get_node_id (mapping,rev_mapping,next_id,a)) args;
-                        val succeed = List.exists (fn (a) => case a of NONE => true | _ => false) to_check;
-                        in if succeed then SOME(id) else NONE end
+fun revrite_term (vars,id_generator,rev_mapping) (Var(name)) : term_with_id =
+    (case var_dict_t.lookup(implode name,!vars) 
+        of SOME(id) => Var__(id,Var(name))
+         | NONE => let
+             val id = id_generator();
+             val name_s = implode name;
+             val new_vars = var_dict_t.insert((name_s,id),!vars);
+             val () = vars := new_vars;
+             val result=Var__(id,Var(name));
+             val new_rev_mapping = id_to_term_dict_t.insert((id,result),!rev_mapping);
+             val () = rev_mapping := new_rev_mapping;
+             in result end)
+|   revrite_term (vars,id_generator,rev_mapping) (Fun(name,args)) = let
+    val id = id_generator();
+    val name_s = implode name;
+    val result=Fun__(id,map (revrite_term (vars,id_generator,rev_mapping)) args,Fun(name,args));
+    val new_rev_mapping = id_to_term_dict_t.insert((id,result),!rev_mapping);
+    val () = rev_mapping := new_rev_mapping;
+    in result end;
+    
+fun revrite_terms (int_get,rev_mapping,term1,term2) = let
+    val vars = ref var_dict_t.empty;
+    val id_gen = fn () => get_next_id int_get;
+    in (revrite_term (vars,id_gen,rev_mapping) term1, revrite_term (vars,id_gen,rev_mapping) term2) end;
         
-        ) end;
-
-(* Zwraca identyfikator danego termu. *)
-fun get_node_id_const (mapping: (int * int) term_meta_info_dict_t.dict) term : int = let
-    val (term_meta,arity) = convert_term_to_meta term;
-    in #1 (valOf (term_meta_info_dict_t.lookup(term_meta,mapping))) end;
-        
-fun build_node (mapping,rev_mapping,id) = let
-    val term = valOf (id_to_term_dict_t.lookup(id,rev_mapping));
-    in Node(
+fun build_node (rev_mapping,id) = 
+    case valOf (id_to_term_dict_t.lookup(id,rev_mapping))
+    of Var__(_,term) =>
+        Node(
         id,
         1,
         term,
-        case term of Var(name) => Var_(implode name) | Fun(name,args) => Fun_(implode name,map (get_node_id_const mapping) args),
+        (case term of Var(name) => Var_(implode name)),
         false,
         false,
-        case term of Var(name) => [name] | _ => []) end;
+        [case term of Var(name) => name])
+    |  Fun__(_,argsWithIds,term) =>
+        Node(
+        id,
+        1,
+        term,
+        (case term of Fun(name,_) => Fun_(implode name,map get_id argsWithIds)),
+        false,
+        false,
+        [])
         
-fun build_node_array (mapping,rev_mapping,id,end_id) = if id<>end_id then ref (build_node(mapping,rev_mapping,id)) :: (build_node_array(mapping,rev_mapping,id+1,end_id)) else [];
+fun build_node_array (rev_mapping,id,end_id) = if id<>end_id then ref (build_node(rev_mapping,id)) :: (build_node_array(rev_mapping,id+1,end_id)) else [];
         
-fun build_graph ((term1: term),(term2: term)) : node vector option = let
-    val mapping = ref term_meta_info_dict_t.empty;
+fun build_graph ((term1: term),(term2: term)) : (node ref vector *int *int) = let
     val rev_mapping = ref id_to_term_dict_t.empty;
     val id_gen = ref 0;
-in case get_node_id (mapping,rev_mapping,id_gen,term1) of NONE => NONE | SOME(term1_id) =>
-   case get_node_id (mapping,rev_mapping,id_gen,term2) of NONE => NONE | SOME(term2_id) =>
+    val (term1r,term2r) = revrite_terms(id_gen,rev_mapping,term1,term2);
+    val node_array = build_node_array(!rev_mapping,0,!id_gen);
     
-    
-    NONE end;
+    in (Vector.fromList node_array,get_id term1r,get_id term2r) end;
           
 in
 
 fun unify (term1: term) (term2: term) : substitution option = let
-    val G = build_graph(term1,term2);
-    in NONE end;
+    val (G,t1id,t2id) = build_graph(term1,term2);
+    val result = ref (SOME []);
+    
+    fun get_node (id:int) : node = !(Vector.sub(G,id));
+    fun set_node ((id:int),(node: node)) = (Vector.sub(G,id)) := node;
+    
+    fun die (): unit = result := NONE;
+    
+    fun find((s_id: int)) : int = let
+    val node = get_node s_id;
+    val class = get_class node;
+    in
+    if class = s_id then s_id else let
+        val t_id = find class;
+        val () = set_node(s_id,node_with_class node t_id);
+        in t_id end
+    end;
+    
+    fun union((s_id: int),(t_id: int)) : unit = if not (isSome (!result)) then () else let
+    val s_node = get_node s_id;
+    val t_node = get_node t_id;
+    val new_size = (get_size s_node) + (get_size t_node);
+    in if (get_size s_node) >= (get_size t_node) then (
+        set_node (s_id,node_with_size_vars_schema s_node new_size (concat_vars(s_node,t_node)) (case get_schema s_node of Var(_) => get_schema t_node | Fun(a,b) => Fun(a,b)));
+        set_node (t_id,node_with_class t_node s_id))
+    else (
+        set_node (t_id,node_with_size_vars_schema t_node new_size (concat_vars(t_node,s_node)) (case get_schema t_node of Var(_) => get_schema s_node | Fun(a,b) => Fun(a,b)));
+        set_node (s_id,node_with_class s_node t_id)) end;
+    
+    fun unif_closure((s_id: int),(t_id: int)) : unit = if not (isSome (!result)) then () else let
+        val s_repr_id = find s_id;
+        val t_repr_id = find t_id;
+        in if s_repr_id=t_repr_id then () else let
+            val s_node = get_node s_repr_id;
+            val t_node = get_node t_repr_id;
+            val s_term_meta_info = get_term_meta_info s_node;
+            val t_term_meta_info = get_term_meta_info t_node;
+            in case s_term_meta_info 
+               of Fun_(s_name,s_argsIds) => (
+                   case t_term_meta_info
+                   of Fun_(t_name,t_argsIds) =>
+                       if s_name = t_name andalso (length s_argsIds) = (length t_argsIds) then (union(s_repr_id,t_repr_id); ListPair.app unif_closure (s_argsIds,t_argsIds)) else die()
+                   |  Var_(_) => union(s_repr_id,t_repr_id))
+               |  Var_(_) => union(s_repr_id,t_repr_id)
+            end
+        end;
+        
+    fun add_substitution name term = if not (isSome (!result)) then () else let
+        val new_substitution = (name,term)::(valOf(!result));
+        val () = result := SOME(new_substitution);
+        in () end;
+    
+    fun find_solution((s_id: int)) : unit = if not (isSome (!result)) then () else let
+        val s_real_id = find s_id;
+        val s_real_node = get_node s_real_id;
+        val s_schema = get_schema s_real_node;
+        in if get_acyclic s_real_node then () else
+        if get_visited s_real_node then die() else (
+        case get_term_meta_info s_real_node
+        of Var_(_) => ()
+        |  Fun_(name,argsIds) => (
+            set_node(s_real_id,node_with_visited s_real_node true);
+            app find_solution argsIds;
+            set_node(s_real_id,s_real_node));
+        set_node(s_real_id,node_with_acyclic s_real_node true);
+        case get_term_meta_info s_real_node
+        of Var_(name) => let val e_name = explode name in
+            for_each_var s_real_node (fn x => if x=e_name then () else add_substitution x s_schema) end
+        |  Fun_(_,_) => for_each_var s_real_node (fn x => add_substitution x s_schema) )
+    end;
+    
+    val () = unif_closure(t1id,t2id);
+    val () = find_solution(t1id);
+    in !result end;
 
     
 end; (* local *)
