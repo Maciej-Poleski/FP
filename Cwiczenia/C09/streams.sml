@@ -64,10 +64,14 @@ structure Stream=struct
 
 	fun fromList [] = snil()
 	|   fromList (x::xs) = smemo (fn _ => SOME(x,fromList xs));
-
-	fun concat str = if isNil str then [] else shd(str) :: (concat (stl str));
+	
+	fun add a str = smemo (fn _ => SOME(a,str));
 	
 	fun concatPair str1 str2 = smemo (fn _ => if isNil str1 then seval str2 else SOME(shd str1,concatPair (stl str1) str2));
 
+        fun concat str = smemo (fn _ => if isNil str then NONE else seval (concatPair (shd str) (concat (stl str))));
+        
 	fun map f str= smemo (fn _ => if isNil str then NONE else SOME(f (shd str),map f (stl str)));
+	
+	fun toList str = if isNil str then [] else shd str :: toList (stl str);
 end
