@@ -187,7 +187,7 @@ val pspace_r = pmany1 (psat Char.isSpace);
 
 val pspace_o = pmany (psat Char.isSpace);
 
-val pappop = pspace_r >> MParser.unit (fn a => fn b => App(a,b));
+val pappop = pspace_o >> MParser.unit (fn a => fn b => App(a,b));
 
 val pcatop = pspace_o >> pstring "::" >> pspace_o >> MParser.unit (fn a => fn b => App(App(Label "CONS",a),b));
 
@@ -216,7 +216,7 @@ fun parseSml (cstr: cstr) : lterm option= let
     val resultStream = parse papp cstr;
     in case Stream.isNil resultStream of true => NONE | false => SOME(#1 (Stream.shd resultStream)) end;
 
-fun print_term NONE = print "NO_PARSE"
+fun print_term NONE = print "NO PARSE"
 |   print_term (SOME t) = print (lterm2str t);
 
 fun parseT (str: string) : lterm = valOf (parseSml (Stream.fromList (explode str)));
