@@ -379,7 +379,7 @@ functor TYPECHECK(U:UNIFIER) = struct
                         val leftTerms = newL :: al @ bl;
                         val rightTerms = newR :: ar @ br;
                         val resultSubstitution = U.lunify (SOME (leftTerms,rightTerms));
-                    in (case resultSubstitution of NONE => NONE | SOME(s) => SOME(new_variable,s)) end)) end
+                    in (case resultSubstitution of NONE => NONE | SOME(s) => SOME(consumeSubstitution s new_variable,s)) end)) end
     |   impl (Abs (l,t)) context = let
             val new_variable = VAR_ (get_new_type_variable_name ());
             val new_context = add_tterm_to_context l new_variable context;
@@ -393,7 +393,7 @@ functor TYPECHECK(U:UNIFIER) = struct
                 val leftTerms = newL :: upperL;
                 val rightTerms = newR :: upperR;
                 val resultSubstitution = U.lunify (SOME (leftTerms,rightTerms));
-            in case resultSubstitution of NONE => NONE | SOME(s) => SOME(result_variable,s) end end
+            in case resultSubstitution of NONE => NONE | SOME(s) => SOME(consumeSubstitution s result_variable,s) end end
     |   impl (Let (labelToTermList, body)) context = let
         val (substitution,new_context,generic_to_inst_list) = handleLetDefinitions labelToTermList context;
     in case substitution of NONE => NONE | SOME(ss) => let
@@ -404,15 +404,16 @@ functor TYPECHECK(U:UNIFIER) = struct
                 val (subsL,subsR) = substitution_to_termLists subs;
                 val () = dump_substitution ss;
                 val () = dump_substitution subs;
-                val result_substitution = make_substitution_with_generics_instantiated (ss@subs) (!generic_to_inst_list);
-(*                 val result_substitution = U.lunify (SOME (substitutionL @ subsL, substitutionR @ subsR)); *)
-(*                 val () = dump_substitution (valOf result_substitution); *)
-            in case result_substitution of NONE => NONE | SOME(s) => SOME(upperType,s) end end end
+(*                 val result_substitution = make_substitution_with_generics_instantiated (ss@subs) (!generic_to_inst_list); *)
+                val result_substitution = U.lunify (SOME (substitutionL @ subsL, substitutionR @ subsR));
+                val () = dump_substitution (valOf result_substitution);
+            in case result_substitution of NONE => NONE | SOME(s) => SOME(consumeSubstitution s upperType,s) end end end
     and handleLetDefinitions labelToTermList context : substitution option * ttype context_t.dict * label list genericDict_t.dict ref = let
+
+        val new_context = makeTypeVariablesForLetInContext labelToTermList context; (* Tworzy nowe zmienne typowe i umieszcza je w kontekście *)
+(*         val () = dump_context new_context; *)
         val namesOfThingsToGeneralizeBackup = !namesOfThingsToGeneralize; (* Przywrócić po zakończeniu *)
         val () = namesOfThingsToGeneralize := [];
-        val new_context = makeTypeVariablesForLetInContext labelToTermList context; (* Tworzy nowe zmienne typowe i umieszcza je w kontekście *)
-        val () = dump_context new_context;
         val new_substitution = makeSubstitutionForLet labelToTermList new_context; (* Tworzy podstawienie nowych zmiennych typowych do typów poszczególnych termów w LET *)
     in case new_substitution of NONE => (NONE,new_context,ref genericDict_t.empty) | SOME(s) => let
         val generic_to_instance_list = ref genericDict_t.empty;
