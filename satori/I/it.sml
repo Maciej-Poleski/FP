@@ -6,12 +6,12 @@ local
                 fun a --> b= ARR (a,b)
 in
                 val context= [
-(*                         ("PLUS",INT --> INT --> INT), *)
-(*                         ("CONS", VAR "a" --> (LIST (VAR "a")) --> (LIST (VAR "a"))), *)
-(*                         ("NIL", LIST (VAR "a")), *)
-                        ("hd",(LIST (VAR "a")) --> VAR "a")
-(*                         ("IF",INT --> VAR "a" --> VAR "a" --> VAR "a"), *)
-(*                         ("tl",LIST (VAR "a") --> LIST (VAR "a")) *)
+                        ("PLUS",INT --> INT --> INT),
+                        ("CONS", VAR "a" --> (LIST (VAR "a")) --> (LIST (VAR "a"))),
+                        ("NIL", LIST (VAR "a")),
+                        ("hd",(LIST (VAR "a")) --> VAR "a"),
+                        ("IF",INT --> VAR "a" --> VAR "a" --> VAR "a"),
+                        ("tl",LIST (VAR "a") --> LIST (VAR "a"))
                         ]
 end;
 
