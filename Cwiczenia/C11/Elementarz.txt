@@ -1,0 +1,211 @@
+1. Kompilator
+
+Będziemy używać kompilatora GHC (http://www.haskell.org/ghc/).
+
+Kompilacja:
+	ghc --make hello.hs
+
+Środowisko interaktywne:
+	ghci
+(wychodzimy z ghci wpisując ":q")
+
+Wewnątrz ghci możemy załadować moduł:
+
+	:l hello.hs
+
+i jawnie wywołać jakąś funkcję:
+
+	main
+
+Plik args.hs zawiera przykład programu, króry wykorzystuje przekazane mu argumenty. Proszę potraktować go na razie instrumentalnie, tzn. nie skupiać się na monadycznych operacjach ["do", "<-", "return"] i zmieniać jedynie linię 11 wywołując różne funkcje zależne od argumentów. Program ten nie będzie działał w ghci. 
+
+np. jesli linię 11 zastąpimy: 
+	putStrLn (show ((read (head args)) + 2))
+to program sprobuje wypisac pierwszy argument programu "(head args)" zwiększony o 2. (read i show to konwersje z i do typu String)
+
+2. Podstawy
+
+Na początek funkcje na liczbach. Używamy ghci. 
+Ghci działa jak kalkulator. Infiksowe operatory to tylko "lukier syntaktyczny" np.
+	> 1-2
+	> 1+2*3	-- nawiasy niekonieczne - infiksowy zapis używa priorytetów
+	> 11 `mod` 5 
+	> 11 `div` 5
+	> 11 / 5 
+	> 3^4
+	> 1== 0		
+	> floor (sqrt 6)
+Zwykle jednak aplikujemy funkcje prefiksowo:
+	nazwaFunkcji arg1 arg2 ...
+np.
+	> (-) 1 2
+	> (+) 1 ((*) 2 3)
+	> mod 11 5
+	> sqrt 2
+Domyślne nawiasowanie tak jak w lambda- rachunku (do lewej) czyli 
+	> (+) 1 (*) 2 3
+nie zadziała. 
+
+Mamy też spojniki logiczne &&, ||, not, które działają na wartościach True i False tak jak powinny. 
+
+Konstrukcja if-then-else działa tak jak się należy tego spodziwać i ma normalną składnię:
+	if warunek then Exp1 else Exp2
+Uwaga! if-then-else jest funkcją trójargumentową, nie ma czegoś takiego jak dwuargumentowe if-then (co miałaby zwracać jeśli warunek jest fałszywy?).
+
+Konstrukcja "let-in" pozwala wprowadzać lokalne definicje:
+
+	perim r = let 
+			pi= 3.14
+		in 2* pi * r
+
+lokalnych definicji może byc więcej np:
+	cArea n= let 
+			pi= 3.14
+			n2= n*n
+		in pi * n2
+
+
+Definiowanie funkcji. 
+
+Wszystkie funkcje możemy definiować jako lamda termy:
+	'\' występuje w roli lambdy a '->' w roli '.'
+np.
+	\n ->  (n+1)
+jest funkcją zwracającą liczbę większą o 1. Możemy zapplikować ją w ghci do jakiejś liczby:
+	> (\n ->  (n+1)) 41
+
+Dla wygody programowania nadajemy termom nazwy, żeby nie musieć ich wielokrotnie przepisywać:
+	inc = (\n ->  (n+1))
+
+Aby zdefiniować nową funkcję w ghci trzeba definicję poprzedzić łowem 'let':
+	let 	inc = (\n ->  (n+1))
+
+Można teź definiować funkcje w jakimś pliku (już bez 'let') i ładować go do ghci ( ':l plik' ). Jeśli zmieniamy coś w pliku to możemy go przeładować w ghci np. za pomocą ':r'.
+
+Można też nie używać notacji lambda, definiując funkcję następująco
+	inc n = n+1
+definicja jest równoważna poprzedniej.
+
+Notacje można mieszać:
+	add x y = x+y
+to ta sama funkcja co
+	add = (\x y -> x+y)
+oraz 
+	add x = (\y -> x+y)
+
+
+Definiowanie przez złożenia:
+W pliku f1.hs jest zdefiniowana funkcja inc następująco:
+	inc n = n+1
+
+w ghci:
+	> :l f1.hs
+	> inc 1
+	> inc 1.2
+	> inc 1/2 	-- dlaczego taki wynik?
+
+proszę potestować inne funkcje z pliku f1.hs.
+
+Definiowanie za pomocą rekursji:
+Do zdefiniowania funkcji używamy jej samej. Tak naprawde jest to użycie kombinatora punktu stałego.
+Łatwo jest zdefiniować term (funkcję) która nie ma postaci normalnej:
+	om n= om (n+1)
+Uwaga! nie można użyć termu omega z lambda rachunku ze względu na system typów (wrócimy do tego). 
+Ewaluację takiego programu można w ghci przerwać za pomocą ctrl-c.
+Powyższa definicja jest przykładem "rekursji ogonowej", czyli nie obciąża stosu. Jedynie argumenty są coraz większe co w końcu wyczerpie pamięc maszyny na której program jest wykonywany. Można prościej:
+	om n = om n
+a nawet
+	om = om
+Do ćwiczeń będziemy wykorzystywać inną funkcję
+	om n= 1+ (om n)
+Obciąża stos, i próba jej ewaluacji zakończy się jego przepełnieniem i otrzymamy 
+	*** Exception: stack overflow
+
+Aby zdefiniować coś sensownego powinniśmy dodać bazę rekursji. np.
+	squareSum n= if (n<1) then 0 else (n^2 + squareSum(n-1))
+
+Wyrażenie:
+	if warunek then Exp1 else Exp2
+jest tak naprawdę skrótem dla wyrażenia:
+	case warunek of 
+		True  -> Exp1
+		False -> Exp2
+
+Nietrudno sobie dopowiedzieć jak działa case w innych przypadkach. np.
+
+	fibb1 n= case n of	
+			0 		-> 1
+			1		-> 1
+			otherwise	-> (fibb1 (n-1)) + (fibb1 (n-2))
+
+(można spojrzeć na powyższy case jak na 2 zagnieżdżone if-then-else)		
+
+Możemy również użyć tzw. "guards" (przy okazji zdefiniujemy ujemne liczby fibonacciego) 
+	fibb2 n
+		|(n==0 || n==1)	= 1
+		| n < 0 	= (fibb2 (n+2)) - (fibb2 (n+1))
+		| n > 1		= (fibb2 (n-1)) + (fibb2 (n-2))
+		| otherwise 	= 1 	-- to można było sobie darować
+
+(nietrudno również tą konstrukcję przetłumaczyć na wiele aplikacji if-then-else)
+
+I jeszcze jedno uproszczenie składniowe:
+
+	fibb3  0 = 1
+	fibb3  1 = 1
+	fibb3  n = (fibb3 (n-1)) + (fibb3 (n-2))
+
+Taka definicja jest tłumaczona na instrukcję case, więc wygląda dokładnie jak fibb1. Proszę zwrócić uwagę że kolejność wyrażeń jest istotna. np. funkcja:
+	fibb4  n = (fibb4 (n-1)) + (fibb4 (n-2)) 
+	fibb4  0 = 1
+	fibb4  1 = 1
+nie kończy działania (kompilator generuje warning). Nie jest to nic dziwnego jeśli się spojrzy na wynik tłumaczenia na case.
+
+Przeanalizuj plik f2.hs
+
+Funkcje na funkcjach.
+
+Argumentami funkcji mogą być równieć funkcje (ostatecznie wszystko to są lambda-termy). Również wartością funkcji może być funkcja.
+
+Możemy zdefiniowac funkcję:
+	twice f x = f(f(x))
+która składa funkcję f dwukrotnie na argumencie x. Proszę spróbować wykonać
+	twice inc 40
+równie dobrze bez uprzedniego definiowania "inc" możemy napisać:
+	twice (\n -> n+1) 40
+Proszę sprobować podać kilka innych funkcji jako parametry. 
+
+Jeśli jakiejś funkcji dwuargumentowej f(x,y) podamy tylko pierwszy argument np. 42 to otrzymamy funkcję która dla argumentu y zwróci f(42,y). W ten sposób zamiast pisać (\n -> n+1) możemy napisać 
+	((+) 1 )
+Działa to oczywiście dla dowolonej liczby argumentów. Nazywamy to "częściową aplikacją".
+(Może ktoś pamięta np. z "Programowania" pojęcie "curryfikacja" (jeszcze do tego wrócimy.)) 
+
+Rozważmy term (funkcjonał):
+	fsum f 1= f(1)
+	fsum f n= f(n)+ fsum f (n-1)
+i różne podstawienia funkcji f (=== nie występuje w Haskellu, oznaczyłem tak "równoważność" termów)
+	fsum (\n -> 1) === \n -> n
+	fsum (\n -> n) === (\n -> suma liczb od 1 do n ) 
+	fsum (\n -> n^2) === (\n -> suma kwadratów liczb od 1 do n ) 
+	fsum (\n -> bToi (prim n)) === (\n -> liczba liczb pierwszych nie większych od n)
+
+Dla porządku definicja kombinatora S:
+
+	cS a b c = (a c) (b c)
+
+i przykład 
+ 	cS (+) (\n -> n+1) 2
+(takie użycie nie ma za dużo sensu, ale na wykładzie jeszcze będzie dużo o S)
+
+Przeanalizuj plik f3.hs
+
+Na koniec dwa przykłady na to że Haskell jest leniwy:
+	cK 1 (om 0)
+Każda standardowa aplikacja kombinatora punktu stałego generuje term bez postaci normalnej. To już widzieliśmy:
+
+fixp f x = f (fixp f) x
+foo f n= if n==0 then 0 else n+ (f (n-1))
+fixp foo 7
+
+Znacznie ciekawsze efekty uzyskamy pracując ze strukturami danych ( o tym kiedy indziej). 
+

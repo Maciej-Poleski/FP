@@ -1,0 +1,117 @@
+Typy w Haskell'u
+
+1. Proste typy
+
+Wyrażenie "::" interpretujemy jako predykat "jest typu" i stosujemy następująco
+	
+	term :: formulaTypu
+lub
+	nazwaTermu :: formulaTypu
+np. wyrazenie
+	(\n -> n):: a->a
+mowi że term (\n->n) jest typu a->a.
+
+Dobrą praktyką jest deklarowanie typu dla funkcji przed jej implementacją/definicją. 
+np.
+
+id :: a->a
+
+id z= z
+
+Nie jest to jednak konieczne. W przypadku braku takiej deklaracji Haskell sam przypisze najbadziej ogólny typ. 
+
+W ghci typ termu T możemy otrzymać wpisujac:
+	>:t T
+np.
+	>:t (\z -> z)
+
+2. Typy algebraiczne
+	
+przykład typu wyliczeniowego
+
+data Color= Red |Green |Blue
+
+Rozważmy typ list zawierających liczby:
+
+	data IntList = Nil | Cons Int IntList
+
+jeszcze lepiej typ list sparametryzować typem elementów listy 
+	data List elType= Nil | Cons elType List	
+wtedy typ IntList jest równoważny typowi (List Int).
+
+Konstruktor już wskazaliśmy, możemy go uzyć:
+	
+	:t (Cons 41 (Cons 42 Nil))
+
+Destruktory możemy zdefiniować za pomocą pattern-matching:
+
+	car :: List elType -> 	elType
+	car (Cons element rest) = element
+	
+	cdr :: List elType -> List elType
+	cdr (Cons element rest) = rest
+
+Przykładowa funkcja rekurencyjna na liście 
+	
+	len:: List elType -> Int
+
+	len Nil = 0 
+	len l = 1 + (len (cdr l))
+
+Listy sa czesto używane, wiec są już zaimplementowane w Haskellu. Typ list elementow typu a jest notowany jako "[a]".
+Wyrazenie	
+	Cons el rest	odpowiada wyrazeniu	el: rest 
+	Nil 					[]		
+	car					head		
+	cdr					tail
+	len					length
+	cat					(++) 	-- operator infiksowy ++
+itd. (patrz http://www.haskell.org/ghc/docs/latest/html/libraries/base/Prelude.html#g:11 )
+
+zwroc uwage na typy powyzszych operacji na listach. Liste mozemy skrotowo zapisac uzywajac nawiasow "[" "]" oraz przecinka np. [1,2,3,4]
+
+Uwaga! 
+	String = [Char]
+
+Analogicznie do list możemy zdefiniować typ dla par np.
+	data Pair elType = Pair elType elType
+Uwaga! to nie jest definicja rekurencyjna!
+pierwsze wystapienie słowa "Pair" jest nazwa typu (parametryzowanego typem elType),  a drugie jest tzw. konstruktorem danych (data constructor). Moglibyśmy rownie dobrze napisać 
+	data Pair elType = Para elType elType
+
+Łatwo napisać rzutowania. 
+Jeszcze lepiej byłoby umożliwic aby elementy pary były rożnych typów np.
+
+	data Pair elType1 elType2 = Pair elType1 elType2
+(teraz typ Pair jest parametryzowany dwoma typami elType1 elType2)
+Rzutowania nie będą się rożnić (poza ew. typami).
+
+Typy dla par, trojek itd. też mają specjalną skladnię. Typowi 
+	Pair elType1 elType2 	odpowiada (elType1, elType2)
+
+termowi 
+	Pair 1 "abc" 		odpowiada term  	(1, "abc")
+
+Są też rzutowania 
+	fst 	- pierwsza współrzędna
+	snd	- druga współrzędna
+ale lepiej używać wzorcow (pattern-matching).
+
+Przykład użycia par (otrzymujemy rekurencję ogonową przy użyciu tzw. techniki akumulatora):
+
+factorial n = snd (pfac (n,1))
+	where 
+		pfac (0, z) = (0,z)
+		pfac (x,z) = (x-1, z*x)
+
+napisz własne termy curryfikacji
+	typ 	 	((a, b) -> c) -> a -> b -> c 
+i odwrotny  (decurryfikacja? )
+	typ		(a -> b -> c) -> (a, b) -> c  
+
+Funkcja 
+	zip :: [a] -> [b] -> [(a, b)]
+z dwóch list robi listę par. Używajac curryfikacji (wbudowane funkcje curry, uncurry) oraz funkcji zip i innych, napisz term ktory z pary list zrobi liste sum poszczegolnych elementow np.
+	fun ([1,2,34], [13,4,5])  === [14,6,39]
+postaraj sie w powyższych definicjach nie używać pattern-matchingu i destruktorow dla par.
+-------------------
